@@ -1,7 +1,7 @@
 from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, TerminateOnNaN, CSVLogger
 from keras import backend as K
-from keras.models import load_model
+from keras.models import load_model, Model
 from keras.layers import Input, Lambda
 from math import ceil
 import numpy as np
@@ -25,27 +25,41 @@ from data_generator.data_augmentation_chain_original_ssd import SSDDataAugmentat
 
 import cv2
 print("Load libraries: done")
-
+print("Assigned tensor dimension")
+print(K.image_data_format())
 def identity_layer(tensor):
     return tensor
 
 # Read image:
 img_path = "examples/fish-bike.jpg"
 I = cv2.imread(img_path)
-img_h, img_w, c = I.shape
-img_c = 20
-boxes4 = Input(shape=(img_h,img_w,img_c))
-# boxes4 = Lambda(identity_layer, output_shape=(img_h, img_w, img_c), name='identity_layer')(input)
-print(boxes4.shape)
-anchorB = AnchorBoxes(img_h, img_w, this_scale=0, next_scale=0.5, aspect_ratios=[1,0.5,2],
+img_h, img_w, img_c = I.shape
+
+# Create network that has only AnchorBoxes layer for testing
+input = Input(shape=(img_h,img_w,img_c))
+boxes4 = Lambda(identity_layer, output_shape=(img_h, img_w, img_c), name='identity_layer')(input)
+anchorB = AnchorBoxes(img_h, img_w, this_scale=0.5, next_scale=0.25, aspect_ratios=[1,0.5,2],
                            two_boxes_for_ar1=True, this_steps=None, this_offsets=None,
                            clip_boxes=True, variances=np.array([1.0,1.0,1.0,1.0]), coords="centroids", normalize_coords=False, name='anchorB')(boxes4)
+model = Model(inputs=input,outputs=anchorB)
+print("Model summary:")
+print(model.summary())
+
+# Get output
+dummy = model.predict(np.expand_dims(I,0))
+print("output type")
+print(type(dummy))
+print("output shape:")
+print(dummy.shape)
+
+# get boxes at specific pixels
 # get boxes at cx and cy
 cx = 50
 cy = 50
-Fboxes = anchorB[:,cy,cx,:,0:4]
+Fboxes = dummy[:,cy,cx,:,:]
 print(Fboxes)
-print(anchorB.shape)
+
+# Show image
 cv2.imshow("x",I)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
