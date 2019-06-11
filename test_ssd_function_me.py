@@ -38,7 +38,7 @@ img_h, img_w, img_c = I.shape
 # Create network that has only AnchorBoxes layer for testing
 input = Input(shape=(img_h,img_w,img_c))
 boxes4 = Lambda(identity_layer, output_shape=(img_h, img_w, img_c), name='identity_layer')(input)
-anchorB = AnchorBoxes(img_h, img_w, this_scale=0.5, next_scale=0.25, aspect_ratios=[1,0.5,2],
+anchorB = AnchorBoxes(img_h*2, img_w*2, this_scale=0.5, next_scale=0.25, aspect_ratios=[1,0.5,2],
                            two_boxes_for_ar1=True, this_steps=None, this_offsets=None,
                            clip_boxes=True, variances=np.array([1.0,1.0,1.0,1.0]), coords="centroids", normalize_coords=False, name='anchorB')(boxes4)
 model = Model(inputs=input,outputs=anchorB)
