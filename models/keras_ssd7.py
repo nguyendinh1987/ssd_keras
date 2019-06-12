@@ -26,6 +26,8 @@ import keras.backend as K
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
+## add new layer
+from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
 
 def build_model(image_size,
                 n_classes,
@@ -395,7 +397,7 @@ def build_model(image_size,
     if mode == 'training':
         model = Model(inputs=x, outputs=predictions)
     elif mode == 'inference':
-        decoded_predictions = DecodeDetections(confidence_thresh=confidence_thresh,
+        decoded_predictions = DecodeDetections_V1(confidence_thresh=confidence_thresh,
                                                iou_threshold=iou_threshold,
                                                top_k=top_k,
                                                nms_max_output_size=nms_max_output_size,

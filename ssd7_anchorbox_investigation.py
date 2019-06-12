@@ -20,6 +20,9 @@ from data_generator.object_detection_2d_photometric_ops import ConvertTo3Channel
 from data_generator.object_detection_2d_geometric_ops import Resize
 from data_generator.object_detection_2d_misc_utils import apply_inverse_transforms
 
+from bounding_box_utils.bounding_box_utils import convert_coordinates
+
+
 print("Load libraries: done")
 
 # Set the image size.
@@ -83,24 +86,35 @@ else: # Load pretrained model (designed model could be changed by loaded model)
                                                    'L2Normalization': L2Normalization,
                                                    'DecodeDetections': DecodeDetections,
                                                    'compute_loss': ssd_loss.compute_loss})
-print(model.summary())
+print("Load model weights: done")
 # Read images
 orig_images = [] # Store the images here.
 input_images = [] # Store resized versions of the images here.
 # We'll only load one image in this example.
-img_path = 'examples/000453.jpg'
+img_path = 'examples/001802.jpg'
 orig_images.append(imread(img_path))
 img = image.load_img(img_path, target_size=(img_height, img_width))
 img = image.img_to_array(img)
 input_images.append(img)
 input_images = np.array(input_images)
 
-print("make prediction")
-y_pred = model.predict(input_images)
+##########################################################################
+print("Try to get output tensors at given layers")
+layer_name_0 = "predictions"
+layer_name_1 = "decoded_predictions"
+injected_model = Model(inputs = model.input,
+                       outputs=[model.get_layer(layer_name_0).output,model.get_layer(layer_name_1).output])
+injected_outputs = injected_model.predict(input_images)
+print('output shape')
+for op in injected_outputs:
+    print(op.shape)                       
+predictions = injected_outputs[0]
+y_pred = injected_outputs[1]
+##########################################################################
 
 print('y_pred shape')
 print(y_pred.shape)
-confidence_threshold = 0.3
+confidence_threshold = 0.6
 y_pred_thresh = [y_pred[k][y_pred[k,:,1] > confidence_threshold] for k in range(y_pred.shape[0])]
 np.set_printoptions(precision=2, suppress=True, linewidth=90)
 print("Predicted boxes:\n")
@@ -121,7 +135,16 @@ plt.imshow(orig_images[0])
 current_axis = plt.gca()
 
 for box in y_pred_thresh[0]:
-    # Transform the predicted bounding boxes for the 512x512 image to the original image dimensions.
+    # Get anchor box
+    cx = box[-8]
+    cy = box[-7]
+    cw = box[-6]
+    ch = box[-5]
+    anchorbox = np.array([cx,cy,cw,ch])
+    # because anchorbox in centroids mode so:
+    anchorbox = convert_coordinates(anchorbox, start_index=0, conversion='centroids2corners', border_pixels='half')
+
+    # Transform the predicted bounding boxes for the 300x480 image to the original image dimensions.
     xmin = box[-4] * orig_images[0].shape[1] / img_width
     ymin = box[-3] * orig_images[0].shape[0] / img_height
     xmax = box[-2] * orig_images[0].shape[1] / img_width
@@ -132,4 +155,8 @@ for box in y_pred_thresh[0]:
     print(label)
     current_axis.add_patch(plt.Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color=color, fill=False, linewidth=2))  
     current_axis.text(xmin, ymin, label, size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
+
+    # draw anchorbox
+    current_axis.add_patch(plt.Rectangle((anchorbox[0], anchorbox[1]), anchorbox[2]-anchorbox[0], anchorbox[3]-anchorbox[1], color=colors[7], fill=False, linewidth=2))  
+    current_axis.text(anchorbox[0], anchorbox[1], "anchor", size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
 plt.show()
