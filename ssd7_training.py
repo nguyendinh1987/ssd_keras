@@ -183,11 +183,11 @@ val_generator = val_dataset.generate(batch_size=batch_size,
 
 # Define model callbacks.
 # TODO: Set the filepath under which you want to save the weights.
-model_checkpoint = ModelCheckpoint(filepath='output/snapshots/ssd7_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
+model_checkpoint = ModelCheckpoint(filepath='output/snapshots/weights/ssd7_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
                                    monitor='val_loss',
                                    verbose=1,
                                    save_best_only=True,
-                                   save_weights_only=False,
+                                   save_weights_only=True,
                                    mode='auto',
                                    period=1)
 

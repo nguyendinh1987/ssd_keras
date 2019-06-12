@@ -57,11 +57,14 @@ model = build_model(image_size=(img_height, img_width, img_channels),
                     normalize_coords=normalize_coords,
                     subtract_mean=intensity_mean,
                     divide_by_stddev=intensity_range)
-
-load_opt = 2
+print(model.summary())
+load_opt = 1
 if load_opt == 1: # Load trained weights into model
     # TODO: Set the path of the trained weights.
-    weights_path = 'path/to/trained/weights/VGG_VOC0712_SSD_512x512_iter_120000.h5'
+    epoch = 18
+    loss = 2.1442
+    val_loss = 2.3166
+    weights_path = 'output/snapshots/weights/ssd7_epoch-{}_loss-{}_val_loss-{}.h5'.format(epoch,loss,val_loss)
     model.load_weights(weights_path, by_name=True)
     # 3: Compile the model so that Keras won't complain the next time you load it.
     adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
@@ -75,18 +78,18 @@ else: # Load pretrained model
     model_path = 'output/snapshots/ssd7_epoch-{}_loss-{}_val_loss-{}.h5'.format(epoch,loss,val_loss)
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, n_neg_min=0, alpha=1.0)
-    K.clear_session() # Clear previous models from memory.
+    #K.clear_session() # Clear previous models from memory.
     model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
                                                    'L2Normalization': L2Normalization,
                                                    'DecodeDetections': DecodeDetections,
                                                    'compute_loss': ssd_loss.compute_loss})
-
+print(model.summary())
 # Read images
-#orig_images = [] # Store the images here.
+orig_images = [] # Store the images here.
 input_images = [] # Store resized versions of the images here.
 # We'll only load one image in this example.
-img_path = 'examples/fish_bike.jpg'
-#orig_images.append(imread(img_path))
+img_path = 'examples/000453.jpg'
+orig_images.append(imread(img_path))
 img = image.load_img(img_path, target_size=(img_height, img_width))
 img = image.img_to_array(img)
 input_images.append(img)
@@ -94,10 +97,38 @@ input_images = np.array(input_images)
 
 print("make prediction")
 y_pred = model.predict(input_images)
-
+print('y_pred shape')
+print(y_pred.shape)
 confidence_threshold = 0.3
 y_pred_thresh = [y_pred[k][y_pred[k,:,1] > confidence_threshold] for k in range(y_pred.shape[0])]
 np.set_printoptions(precision=2, suppress=True, linewidth=90)
 print("Predicted boxes:\n")
 print('   class   conf xmin   ymin   xmax   ymax')
 print(y_pred_thresh[0])
+print(y_pred_thresh[0].shape)
+
+# Visualization
+# Display the image and draw the predicted boxes onto it.
+# Set the colors for the bounding boxes
+colors = plt.cm.hsv(np.linspace(0, 1, 21)).tolist()
+classes = ['background',
+           'car', 'truck', 'pedestrian', 'bicyclist', 'traffic light']
+
+plt.figure(figsize=(20,12))
+plt.imshow(orig_images[0])
+
+current_axis = plt.gca()
+
+for box in y_pred_thresh[0]:
+    # Transform the predicted bounding boxes for the 512x512 image to the original image dimensions.
+    xmin = box[-4] * orig_images[0].shape[1] / img_width
+    ymin = box[-3] * orig_images[0].shape[0] / img_height
+    xmax = box[-2] * orig_images[0].shape[1] / img_width
+    ymax = box[-1] * orig_images[0].shape[0] / img_height
+    print([xmin,ymin,xmax,ymax])
+    color = colors[int(box[0])]
+    label = '{}: {:.2f}'.format(classes[int(box[0])], box[1])
+    print(label)
+    current_axis.add_patch(plt.Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color=color, fill=False, linewidth=2))  
+    current_axis.text(xmin, ymin, label, size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
+plt.show()
