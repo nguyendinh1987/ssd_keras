@@ -381,3 +381,52 @@ def iou(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixels=
     union_areas = boxes1_areas + boxes2_areas - intersection_areas
 
     return intersection_areas / union_areas
+
+def locate_feature_area(anchors_list,anchor_id):
+    anchors_range = [0]
+    for op_idx, op in enumerate(anchors_list):
+        anchors_range.append(op.shape[1]*op.shape[2]*4+anchors_range[op_idx])
+    
+    in_range = 0
+    for range_id in range(len(anchors_range)-1):
+        if anchor_id >= anchors_range[range_id] and anchor_id < anchors_range[range_id+1]:
+            in_range = range_id
+            break
+    
+    # Get grid size
+    grid_size = anchors_list[in_range].shape[1:3]
+
+    # get grid cell in which SSD get features for classification
+    anchor_patch = int(anchor_id - anchors_range[in_range])//4
+    cell_w = anchor_patch % grid_size[1]
+    cell_h = anchor_patch // grid_size[1]
+    cell_id = [cell_h,cell_w]
+    print(cell_id)
+    return grid_size, cell_id
+
+def cell_boundingbox(img_size, grid_size, cell_id):
+    img_h = img_size[0]
+    img_w = img_size[1]
+    grid_h = grid_size[0]
+    grid_w = grid_size[1]
+    cell_h_id = cell_id[0]
+    cell_w_id = cell_id[1]
+    print("input information")
+    print(img_size)
+    print(grid_size)
+    print(cell_id)
+
+    step_h = img_h/grid_h
+    step_w = img_w/grid_w
+
+    # x0 = int(np.floor(grid_w*step_w))
+    # x1 = x0 + int(step_w)
+    # y0 = int(np.floor(grid_h*step_h))
+    # y1 = y0 + int(step_h)
+    x0 = cell_w_id*step_w
+    x1 = x0 + step_w
+    y0 = cell_h_id*step_h
+    y1 = y0 + step_h
+    return [x0,y0,x1,y1]
+
+    

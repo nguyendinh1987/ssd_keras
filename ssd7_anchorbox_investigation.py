@@ -20,7 +20,7 @@ from data_generator.object_detection_2d_photometric_ops import ConvertTo3Channel
 from data_generator.object_detection_2d_geometric_ops import Resize
 from data_generator.object_detection_2d_misc_utils import apply_inverse_transforms
 
-from bounding_box_utils.bounding_box_utils import convert_coordinates
+from bounding_box_utils.bounding_box_utils import convert_coordinates, locate_feature_area, cell_boundingbox
 
 
 print("Load libraries: done")
@@ -91,7 +91,7 @@ print("Load model weights: done")
 orig_images = [] # Store the images here.
 input_images = [] # Store resized versions of the images here.
 # We'll only load one image in this example.
-img_path = 'examples/001802.jpg'
+img_path = 'examples/000453.jpg'
 orig_images.append(imread(img_path))
 img = image.load_img(img_path, target_size=(img_height, img_width))
 img = image.img_to_array(img)
@@ -102,14 +102,34 @@ input_images = np.array(input_images)
 print("Try to get output tensors at given layers")
 layer_name_0 = "predictions"
 layer_name_1 = "decoded_predictions"
+output_anchors4 = "anchors4"
+output_anchors5 = "anchors5"
+output_anchors6 = "anchors6"
+output_anchors7 = "anchors7"
 injected_model = Model(inputs = model.input,
-                       outputs=[model.get_layer(layer_name_0).output,model.get_layer(layer_name_1).output])
+                       outputs=[model.get_layer(layer_name_0).output,
+                                model.get_layer(layer_name_1).output,
+                                model.get_layer(output_anchors4).output,
+                                model.get_layer(output_anchors5).output,
+                                model.get_layer(output_anchors6).output,
+                                model.get_layer(output_anchors7).output])
 injected_outputs = injected_model.predict(input_images)
+anchors_range = [0]
 print('output shape')
-for op in injected_outputs:
-    print(op.shape)                       
+for op_idx, op in enumerate(injected_outputs):
+    print(op.shape)
+    if op_idx > 1:
+        anchors_range.append(op.shape[1]*op.shape[2]*4-1+anchors_range[op_idx-2])
+print(anchors_range)                       
 predictions = injected_outputs[0]
 y_pred = injected_outputs[1]
+# anchorboxes4 = injected_outputs[2]
+# anchorboxes5 = injected_outputs[3]
+# anchorboxes6 = injected_outputs[4]
+# anchorboxes7 = injected_outputs[5]
+anchor_list = injected_outputs[2:6]
+for an in anchor_list:
+    print(an.shape)
 ##########################################################################
 
 print('y_pred shape')
@@ -136,14 +156,20 @@ current_axis = plt.gca()
 
 for box in y_pred_thresh[0]:
     # Get anchor box
-    cx = box[-8]
-    cy = box[-7]
-    cw = box[-6]
-    ch = box[-5]
+    anchor_id = box[-9]
+    cx = box[-8]* orig_images[0].shape[1] / img_width
+    cy = box[-7]* orig_images[0].shape[0] / img_height
+    cw = box[-6]* orig_images[0].shape[1] / img_width
+    ch = box[-5]* orig_images[0].shape[0] / img_height
     anchorbox = np.array([cx,cy,cw,ch])
     # because anchorbox in centroids mode so:
     anchorbox = convert_coordinates(anchorbox, start_index=0, conversion='centroids2corners', border_pixels='half')
-
+    grid_size, cell_id = locate_feature_area(anchor_list,anchor_id)
+    print("grid size")
+    print(grid_size)
+    cell_box = cell_boundingbox(orig_images[0].shape,grid_size,cell_id)
+    print("cell box")
+    print(cell_box)
     # Transform the predicted bounding boxes for the 300x480 image to the original image dimensions.
     xmin = box[-4] * orig_images[0].shape[1] / img_width
     ymin = box[-3] * orig_images[0].shape[0] / img_height
@@ -159,4 +185,8 @@ for box in y_pred_thresh[0]:
     # draw anchorbox
     current_axis.add_patch(plt.Rectangle((anchorbox[0], anchorbox[1]), anchorbox[2]-anchorbox[0], anchorbox[3]-anchorbox[1], color=colors[7], fill=False, linewidth=2))  
     current_axis.text(anchorbox[0], anchorbox[1], "anchor", size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
+
+    # draw feature region
+    current_axis.add_patch(plt.Rectangle((cell_box[0], cell_box[1]), cell_box[2]-cell_box[0], cell_box[3]-cell_box[1], color=colors[8], fill=False, linewidth=1))  
+    current_axis.text(cell_box[0], cell_box[1], "feature_zone", size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
 plt.show()

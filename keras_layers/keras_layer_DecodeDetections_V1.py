@@ -36,12 +36,14 @@ class DecodeDetections_V1(DecodeDetections):
     '''
 
     def __init__(self,
-                 add_anchores = True, 
+                 add_anchores = True,
+                 add_anchor_index = True, 
                  **kwargs):
         '''
         If add_anchores is False, DecodeDections_V1 becomes DecodeDetection
         '''
         self.add_anchores = add_anchores
+        self.add_anchor_index = add_anchor_index
         super(DecodeDetections_V1, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -120,8 +122,19 @@ class DecodeDetections_V1(DecodeDetections):
             #     anchor_boxes_np = convert_coordinates(anchor_boxes_np, start_index=0, conversion='minmax2corners', border_pixels='half')
             # # convert numpy array to tensor
             # anchor_boxes = tf.constant(anchor_boxes_np,dtype='float32')
-            y_pred = tf.concat(values=[y_pred[...,:-12],anchor_boxes, xmin, ymin, xmax, ymax], axis=-1)    
-            offset4anchors = 4
+            if self.add_anchor_index:
+                n = tf.shape(y_pred)[1]
+                b_size = tf.shape(y_pred)[0]
+                box_idx = tf.range(0,n,1.0)
+                box_idx = tf.reshape(box_idx,[n,1])
+                box_idx = tf.expand_dims(box_idx,axis=0)
+                box_idx = tf.tile(box_idx,[b_size,1,1])
+                # y_pred = tf.concat(values=[box_idx,y_pred],axis = -1)
+                y_pred = tf.concat(values=[y_pred[...,:-12],box_idx,anchor_boxes, xmin, ymin, xmax, ymax], axis=-1)    
+                offset4anchors = 5
+            else:
+                y_pred = tf.concat(values=[y_pred[...,:-12],anchor_boxes, xmin, ymin, xmax, ymax], axis=-1)    
+                offset4anchors = 4
         else:
             # Concatenate the one-hot class confidences and the converted box coordinates to form the decoded predictions tensor.
             y_pred = tf.concat(values=[y_pred[...,:-12], xmin, ymin, xmax, ymax], axis=-1)
@@ -135,7 +148,7 @@ class DecodeDetections_V1(DecodeDetections):
         n_boxes = tf.shape(y_pred)[1]
         n_classes = y_pred.shape[2] - 4 - offset4anchors
         class_indices = tf.range(1, n_classes)
-
+            
         # Create a function that filters the predictions for the given batch item. Specifically, it performs:
         # - confidence thresholding
         # - non-maximum suppression (NMS)
@@ -153,9 +166,10 @@ class DecodeDetections_V1(DecodeDetections):
                 box_coordinates = batch_item[...,-4:]
 
                 if self.add_anchores:
-                    single_class = tf.concat([class_id, confidences, batch_item[...,-8:-4], box_coordinates], axis=-1)
+                    single_class = tf.concat([class_id, confidences, batch_item[...,-4-offset4anchors:-4], box_coordinates], axis=-1)
                 else:
                     single_class = tf.concat([class_id, confidences, box_coordinates], axis=-1)
+                    
 
                 # Apply confidence thresholding with respect to the class defined by `index`.
                 threshold_met = single_class[:,1] > self.tf_confidence_thresh
@@ -184,10 +198,10 @@ class DecodeDetections_V1(DecodeDetections):
                     return maxima
 
                 def no_confident_predictions():
-                    if self.add_anchores:
-                        return tf.constant(value=0.0, shape=(1,6+4))
-                    else:
-                        return tf.constant(value=0.0, shape=(1,6))
+                    # if self.add_anchores:
+                    #     return tf.constant(value=0.0, shape=(1,6+offset4anchors))
+                    # else:
+                    return tf.constant(value=0.0, shape=(1,6+offset4anchors))
 
                 single_class_nms = tf.cond(tf.equal(tf.size(single_class), 0), no_confident_predictions, perform_nms)
 
@@ -211,7 +225,7 @@ class DecodeDetections_V1(DecodeDetections):
 
             # Concatenate the filtered results for all individual classes to one tensor.
             if self.add_anchores:
-                filtered_predictions = tf.reshape(tensor=filtered_single_classes, shape=(-1,6+4))
+                filtered_predictions = tf.reshape(tensor=filtered_single_classes, shape=(-1,6+offset4anchors))
             else:
                 filtered_predictions = tf.reshape(tensor=filtered_single_classes, shape=(-1,6))
 
