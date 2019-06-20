@@ -385,7 +385,7 @@ def iou(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixels=
 def locate_feature_area(anchors_list,anchor_id):
     anchors_range = [0]
     for op_idx, op in enumerate(anchors_list):
-        anchors_range.append(op.shape[1]*op.shape[2]*4+anchors_range[op_idx])
+        anchors_range.append(op.shape[1]*op.shape[2]*op.shape[3]+anchors_range[op_idx])
     
     in_range = 0
     for range_id in range(len(anchors_range)-1):
@@ -397,7 +397,11 @@ def locate_feature_area(anchors_list,anchor_id):
     grid_size = anchors_list[in_range].shape[1:3]
 
     # get grid cell in which SSD get features for classification
-    anchor_patch = int(anchor_id - anchors_range[in_range])//4
+    print("anchors_range")
+    print(anchors_range)
+    print(anchors_range[in_range])
+    print(anchor_id)
+    anchor_patch = int(int(anchor_id - anchors_range[in_range]-1)//anchors_list[in_range-1].shape[3])
     cell_w = anchor_patch % grid_size[1]
     cell_h = anchor_patch // grid_size[1]
     cell_id = [cell_h,cell_w]
@@ -428,5 +432,46 @@ def cell_boundingbox(img_size, grid_size, cell_id):
     y0 = cell_h_id*step_h
     y1 = y0 + step_h
     return [x0,y0,x1,y1]
+
+def img_generation(mean_v,std_v,img_size,is_color=True):
+    if is_color:
+        n_samples = img_size[0] * img_size[1] * 3
+    else:
+        n_samples = img_size[0] * img_size[1]
+    samples = np.random.normal(loc=0.0,scale=std_v,size=n_samples)
+    
+    # Move to zero mean    
+    actual_mean = np.mean(samples)
+    zeros_mean_samples = samples - actual_mean
+    
+    # Move to expected std
+    actual_std = np.std(zeros_mean_samples)
+    zeros_mean_samples = zeros_mean_samples * (std_v/actual_std)
+    
+    # Move to expected mean
+    final_samples = zeros_mean_samples + mean_v
+
+    # Recheck:
+    assert(mean_v==np.mean(final_samples),"Mean is not qualified. Expected {}, but got {}".format(mean_v,np.mean(final_samples)))
+    assert(std_v==np.std(final_samples),"Mean is not qualified. Expected {}, but got {}".format(std_v,np.std(final_samples)))
+
+    # Form image format
+    #final_samples = final_samples*255/np.amax(final_samples)
+    final_samples = final_samples.astype("uint8")
+    print("max value is {}".format(np.amax(final_samples)))
+    if is_color:
+        final_samples = final_samples.reshape((img_size[0],img_size[1],3))
+    else:
+        final_samples = final_samples.reshape((img_size[0],img_size[1]))
+    
+    # Print mean and std:
+    print("Generated image has mean of {} and std of {}".format(np.mean(final_samples),np.std(final_samples)))
+    print("while")
+    print("Expected mean is {} and expected std is {}".format(mean_v, std_v))
+
+    return final_samples
+
+
+
 
     

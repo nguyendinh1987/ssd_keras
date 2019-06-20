@@ -25,7 +25,7 @@ import keras.backend as K
 
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_L2Normalization import L2Normalization
-from keras_layers.keras_layer_DecodeDetections import DecodeDetections
+from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
 
 def ssd_300(image_size,
@@ -421,7 +421,7 @@ def ssd_300(image_size,
     if mode == 'training':
         model = Model(inputs=x, outputs=predictions)
     elif mode == 'inference':
-        decoded_predictions = DecodeDetections(confidence_thresh=confidence_thresh,
+        decoded_predictions = DecodeDetections_V1(confidence_thresh=confidence_thresh,
                                                iou_threshold=iou_threshold,
                                                top_k=top_k,
                                                nms_max_output_size=nms_max_output_size,
