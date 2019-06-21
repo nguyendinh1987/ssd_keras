@@ -401,7 +401,7 @@ def locate_feature_area(anchors_list,anchor_id):
     print(anchors_range)
     print(anchors_range[in_range])
     print(anchor_id)
-    anchor_patch = int(int(anchor_id - anchors_range[in_range]-1)//anchors_list[in_range-1].shape[3])
+    anchor_patch = int(int(anchor_id - anchors_range[in_range])//anchors_list[in_range].shape[3])
     cell_w = anchor_patch % grid_size[1]
     cell_h = anchor_patch // grid_size[1]
     cell_id = [cell_h,cell_w]

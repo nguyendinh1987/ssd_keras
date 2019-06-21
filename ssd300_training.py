@@ -74,26 +74,26 @@ model = ssd_300(image_size=(img_height, img_width, img_channels),
 # 2: Load some weights into the model.
 ############################################################################################
 ## TODO: Set the path to the weights you want to load.
-weights_path = 'output/ssd300_snapshots/weights/ssd300_pascal_07+12_epoch-30_loss-14.7925_val_loss-14.6434.h5'
-model.load_weights(weights_path, by_name=True)
+#weights_path = 'output/ssd300_snapshots/weights/ssd300_pascal_07+12_epoch-30_loss-14.7925_val_loss-14.6434.h5'
+#model.load_weights(weights_path, by_name=True)
 
 # 3: Instantiate an optimizer and the SSD loss function and compile the model.
 #    If you want to follow the original Caffe implementation, use the preset SGD
 #    optimizer, otherwise I'd recommend the commented-out Adam optimizer.
 #adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
-sgd = SGD(lr=0.001, momentum=0.9, decay=0.0, nesterov=False)
-ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
-model.compile(optimizer=sgd, loss=ssd_loss.compute_loss)
+#sgd = SGD(lr=0.001, momentum=0.9, decay=0.0, nesterov=False)
+#ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+#model.compile(optimizer=sgd, loss=ssd_loss.compute_loss)
 
 ## Load a previously created model
 ## TODO: Set the path to the `.h5` file of the model to be loaded.
-#model_path = 'path/to/trained/model.h5'
-## We need to create an SSDLoss object in order to pass that to the model loader.
-#ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
-#K.clear_session() # Clear previous models from memory.
-#model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
-#                                               'L2Normalization': L2Normalization,
-#                                               'compute_loss': ssd_loss.compute_loss})
+model_path = 'output/ssd300_snapshots/models/ssd300_pascal_07+12_epoch-01_loss-20.8205_val_loss-16.3313.h5'
+# We need to create an SSDLoss object in order to pass that to the model loader.
+ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+K.clear_session() # Clear previous models from memory.
+model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
+                                               'L2Normalization': L2Normalization,
+                                               'compute_loss': ssd_loss.compute_loss})
 
 #################################################################################################
 # Data generator for training
@@ -230,11 +230,11 @@ print("Number of images in the validation dataset:\t{:>6}".format(val_dataset_si
 
 # Define model callbacks.
 # TODO: Set the filepath under which you want to save the model.
-model_checkpoint = ModelCheckpoint(filepath='output/ssd300_snapshots/weights/ssd300_pascal_07+12_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
+model_checkpoint = ModelCheckpoint(filepath='output/ssd300_snapshots/models/ssd300_pascal_07+12_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
                                    monitor='val_loss',
                                    verbose=1,
                                    save_best_only=True,
-                                   save_weights_only=True,
+                                   save_weights_only=False,
                                    mode='auto',
                                    period=1)
 #model_checkpoint.best = 
@@ -253,7 +253,7 @@ callbacks = [model_checkpoint,
 ##  Train
 ################################################################################################
 # If you're resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
-initial_epoch   = 78
+initial_epoch   = 0
 final_epoch     = 120
 steps_per_epoch = 1000
 

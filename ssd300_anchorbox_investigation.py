@@ -51,32 +51,33 @@ offsets = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5] # The offsets of the first anchor box c
 clip_boxes = False # Whether or not to clip the anchor boxes to lie entirely within the image boundaries
 variances = [0.1, 0.1, 0.2, 0.2] # The variances by which the encoded target coordinates are divided as in the original implementation
 normalize_coords = True
-# Build keras model
-# 1: Build the Keras model
-K.clear_session() # Clear previous models from memory.
-model = ssd_300(image_size=(img_height, img_width, img_channels),
-                n_classes=n_classes,
-                mode='inference',
-                l2_regularization=0.0005,
-                scales=scales,
-                aspect_ratios_per_layer=aspect_ratios,
-                two_boxes_for_ar1=two_boxes_for_ar1,
-                steps=steps,
-                offsets=offsets,
-                clip_boxes=clip_boxes,
-                variances=variances,
-                normalize_coords=normalize_coords,
-                subtract_mean=mean_color,
-                swap_channels=swap_channels)
 
-print(model.summary())
-load_opt = 1
+load_opt = 0
 if load_opt == 1: # Load trained weights into model (designed model is maintained)
     # TODO: Set the path of the trained weights.
+
+    # Build keras model
+    # 1: Build the Keras model
+    K.clear_session() # Clear previous models from memory.
+    model = ssd_300(image_size=(img_height, img_width, img_channels),
+                    n_classes=n_classes,
+                    mode='inference',
+                    l2_regularization=0.0005,
+                    scales=scales,
+                    aspect_ratios_per_layer=aspect_ratios,
+                    two_boxes_for_ar1=two_boxes_for_ar1,
+                    steps=steps,
+                    offsets=offsets,
+                    clip_boxes=clip_boxes,
+                    variances=variances,
+                    normalize_coords=normalize_coords,
+                    subtract_mean=mean_color,
+                    swap_channels=swap_channels)
+    print(model.summary())
+
     epoch = 78
     loss = 13.0470
     val_loss = 12.8245
-    
     weights_path = 'output/ssd300_snapshots/weights/ssd300_pascal_07+12_epoch-{}_loss-{}_val_loss-{}.h5'.format(epoch,loss,val_loss)
     model.load_weights(weights_path, by_name=True)
     # 3: Compile the model so that Keras won't complain the next time you load it.
@@ -85,14 +86,35 @@ if load_opt == 1: # Load trained weights into model (designed model is maintaine
     model.compile(optimizer=sgd, loss=ssd_loss.compute_loss)
 else: # Load pretrained model (designed model could be changed by loaded model)
     # TODO: Set the path to the `.h5` file of the model to be loaded.
-    print("Need to write your code")
+    from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
+    model_path = 'output/ssd300_snapshots/models/ssd300_pascal_07+12_epoch-01_loss-20.8205_val_loss-16.3313.h5'
+    
+    # We need to create an SSDLoss object in order to pass that to the model loader.
+    ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+    K.clear_session() # Clear previous models from memory.
+    train_model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
+                                                         'L2Normalization': L2Normalization,
+                                                         'compute_loss': ssd_loss.compute_loss})
+    train_output_layer = "predictions"
+    predictions = train_model.get_layer(train_output_layer).output
+    decoded_predictions = DecodeDetections_V1(confidence_thresh=0.01,
+                                               iou_threshold=0.45,
+                                               top_k=200,
+                                               nms_max_output_size=400,
+                                               coords='centroids',
+                                               normalize_coords=normalize_coords,
+                                               img_height=img_height,
+                                               img_width=img_width,
+                                               name='decoded_predictions')(predictions)
+    model = Model(input = train_model.input,
+                  output= decoded_predictions)
 
 print("Load model weights: done")
 # Read images
 orig_images = [] # Store the images here.
 input_images = [] # Store resized versions of the images here.
 # We'll only load one image in this example.
-img_path = 'examples/001033.jpg'#new_image_0.jpg'#
+img_path = 'examples/download_1.jpg'#new_image_0.jpg'#
 orig_images.append(imread(img_path))
 img = image.load_img(img_path, target_size=(img_height, img_width))
 img = image.img_to_array(img)
@@ -139,7 +161,7 @@ for an in anchor_list:
 
 print('y_pred shape')
 print(y_pred.shape)
-confidence_threshold = 0.2
+confidence_threshold = 0.16
 y_pred_thresh = [y_pred[k][y_pred[k,:,1] > confidence_threshold] for k in range(y_pred.shape[0])]
 np.set_printoptions(precision=2, suppress=True, linewidth=90)
 print("Predicted boxes:\n")
@@ -182,8 +204,8 @@ for box_idx, box in enumerate(y_pred_thresh[0]):
 
     # create new image
     new_image = np.zeros(orig_images[0].shape)
-    v_offset = 0*(cell_box[2] - cell_box[0])
-    h_offset = 0*(cell_box[3] - cell_box[1])
+    v_offset = 4.5*(cell_box[2] - cell_box[0])
+    h_offset = 4.5*(cell_box[3] - cell_box[1])
     crop_y0 = max(0,int(cell_box[1] - h_offset/2))
     crop_y1 = min(orig_images[0].shape[0],int(cell_box[3] + h_offset/2))
     crop_x0 = max(0,int(cell_box[0] - v_offset/2))
