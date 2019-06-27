@@ -1,10 +1,7 @@
 from keras import backend as K
-#set specific GPU
-config = K.tf.ConfigProto(device_count={'GPU':1, 'GPU':2})
-sess = K.tf.Session(config=config)
-####################################################
 from keras.models import load_model, Model
 from keras.preprocessing import image
+from PIL import Image as pil_img
 from keras.optimizers import Adam,SGD
 from imageio import imread, imwrite
 import numpy as np
@@ -78,7 +75,7 @@ if load_opt == 1: # Load trained weights into model (designed model is maintaine
     epoch = 78
     loss = 13.0470
     val_loss = 12.8245
-    weights_path = 'output/ssd300_snapshots/weights/ssd300_pascal_07+12_epoch-{}_loss-{}_val_loss-{}.h5'.format(epoch,loss,val_loss)
+    weights_path = 'output/ssd300/snapshots/weights/ssd300_pascal_07+12_epoch-{}_loss-{}_val_loss-{}.h5'.format(epoch,loss,val_loss)
     model.load_weights(weights_path, by_name=True)
     # 3: Compile the model so that Keras won't complain the next time you load it.
     sgd = SGD(lr=0.001, momentum=0.9, decay=0.0, nesterov=False)
@@ -87,7 +84,8 @@ if load_opt == 1: # Load trained weights into model (designed model is maintaine
 else: # Load pretrained model (designed model could be changed by loaded model)
     # TODO: Set the path to the `.h5` file of the model to be loaded.
     from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
-    model_path = 'output/ssd300_snapshots/models/ssd300_pascal_07+12_epoch-01_loss-20.8205_val_loss-16.3313.h5'
+    # model_path = 'output/ssd300/snapshots/models/ssd300_pascal_07+12_epoch-118_loss-12.8398_val_loss-12.6329.h5'
+    model_path = 'output/ssd300_not_BN/snapshots/models/ssd300_pascal_07+12_epoch-119_loss-12.9331_val_loss-12.7536.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
@@ -114,7 +112,7 @@ print("Load model weights: done")
 orig_images = [] # Store the images here.
 input_images = [] # Store resized versions of the images here.
 # We'll only load one image in this example.
-img_path = 'examples/download_1.jpg'#new_image_0.jpg'#
+img_path = 'examples/000071.jpg'#new_image_0.jpg'#
 orig_images.append(imread(img_path))
 img = image.load_img(img_path, target_size=(img_height, img_width))
 img = image.img_to_array(img)
@@ -161,7 +159,7 @@ for an in anchor_list:
 
 print('y_pred shape')
 print(y_pred.shape)
-confidence_threshold = 0.16
+confidence_threshold = 0.7
 y_pred_thresh = [y_pred[k][y_pred[k,:,1] > confidence_threshold] for k in range(y_pred.shape[0])]
 np.set_printoptions(precision=2, suppress=True, linewidth=90)
 print("Predicted boxes:\n")
@@ -202,18 +200,33 @@ for box_idx, box in enumerate(y_pred_thresh[0]):
     print("cell box")
     print(cell_box)
 
-    # create new image
-    new_image = np.zeros(orig_images[0].shape)
-    v_offset = 4.5*(cell_box[2] - cell_box[0])
-    h_offset = 4.5*(cell_box[3] - cell_box[1])
-    crop_y0 = max(0,int(cell_box[1] - h_offset/2))
-    crop_y1 = min(orig_images[0].shape[0],int(cell_box[3] + h_offset/2))
-    crop_x0 = max(0,int(cell_box[0] - v_offset/2))
-    crop_x1 = min(orig_images[0].shape[1],int(cell_box[2] + v_offset/2))
-    cropped_img = np.copy(orig_images[0][crop_y0:crop_y1,crop_x0:crop_x1,:])
-    new_image = new_image + img_generation(np.mean(orig_images[0]),np.std(orig_images[0]),[new_image.shape[0],new_image.shape[1]])
-    new_image[crop_y0:crop_y1,crop_x0:crop_x1,:] = cropped_img
-    imwrite('examples/new_image_'+str(box_idx)+'.jpg',new_image)
+    if True:
+        # create new image
+        new_image = np.zeros(orig_images[0].shape)
+        v_offset = 2*(cell_box[2] - cell_box[0])
+        h_offset = 2*(cell_box[3] - cell_box[1])
+        crop_y0 = max(0,int(cell_box[1] - h_offset/2))
+        crop_y1 = min(orig_images[0].shape[0],int(cell_box[3] + h_offset/2))
+        crop_x0 = max(0,int(cell_box[0] - v_offset/2))
+        crop_x1 = min(orig_images[0].shape[1],int(cell_box[2] + v_offset/2))
+        cropped_img = np.copy(orig_images[0][crop_y0:crop_y1,crop_x0:crop_x1,:])
+        new_image = new_image + img_generation(np.mean(orig_images[0]),np.std(orig_images[0]),[new_image.shape[0],new_image.shape[1]])
+        new_image[crop_y0:crop_y1,crop_x0:crop_x1,:] = cropped_img
+        new_image = new_image.astype("uint8")
+        imwrite('examples/new_image_'+str(box_idx)+'.jpg',new_image)
+    if False:
+        # create new image
+        new_image = np.copy(orig_images[0])
+        v_offset = 2.5*(cell_box[2] - cell_box[0])
+        h_offset = 2.5*(cell_box[3] - cell_box[1])
+        crop_y0 = max(0,int(cell_box[1] - h_offset/2))
+        crop_y1 = min(orig_images[0].shape[0],int(cell_box[3] + h_offset/2))
+        crop_x0 = max(0,int(cell_box[0] - v_offset/2))
+        crop_x1 = min(orig_images[0].shape[1],int(cell_box[2] + v_offset/2))
+        cropped_img = np.copy(orig_images[0][crop_y0:crop_y1,crop_x0:crop_x1,:])
+        new_image[crop_y0:crop_y1,crop_x0:crop_x1,:] = img_generation(np.mean(cropped_img),np.std(cropped_img),[cropped_img.shape[0],cropped_img.shape[1]])
+        imwrite('examples/new_image_'+str(box_idx)+'.jpg',new_image)
+
     # Transform the predicted bounding boxes for the 300x480 image to the original image dimensions.
     xmin = box[-4] * orig_images[0].shape[1] / img_width
     ymin = box[-3] * orig_images[0].shape[0] / img_height
@@ -235,5 +248,63 @@ for box_idx, box in enumerate(y_pred_thresh[0]):
     current_axis.text(cell_box[0], cell_box[1], "_feature_zone", size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
 plt.show()
 
-# Crop feature region and create a new image
 # Running net predict on new image
+print("###########################################################################")
+print(" Processing on new image")
+if not isinstance(new_image,np.ndarray) :
+    print("No new image was generated. {}".format(type(orig_images[0])))
+else:
+    # resize image:
+    print(new_image.dtype)
+    I_pil = pil_img.fromarray(new_image).resize((img_width,img_height))
+    N_new_image = np.array(I_pil)
+    N_injected_outputs = injected_model.predict(np.expand_dims(N_new_image,axis=0))
+    N_predictions = N_injected_outputs[0]
+    N_y_pred = N_injected_outputs[1]
+    N_y_pred_thresh = [N_y_pred[k][N_y_pred[k,:,1] > confidence_threshold-0.4] for k in range(N_y_pred.shape[0])]
+    N_anchor_list = N_injected_outputs[2:8]
+
+    # New visualization
+    plt.figure(figsize=(20,12))
+    plt.imshow(new_image)
+    current_axis = plt.gca()
+
+    for box_idx, box in enumerate(N_y_pred_thresh[0]):
+        # Get anchor box
+        anchor_id = box[-9]
+        cx = box[-8]* new_image.shape[1] / img_width
+        cy = box[-7]* new_image.shape[0] / img_height
+        cw = box[-6]* new_image.shape[1] / img_width
+        ch = box[-5]* new_image.shape[0] / img_height
+        anchorbox = np.array([cx,cy,cw,ch])
+        # because anchorbox in centroids mode so:
+        anchorbox = convert_coordinates(anchorbox, start_index=0, conversion='centroids2corners', border_pixels='half')
+        grid_size, cell_id = locate_feature_area(N_anchor_list,anchor_id)
+        print("grid size")
+        print(grid_size)
+        cell_box = cell_boundingbox(new_image.shape,grid_size,cell_id)
+        print("cell box")
+        print(cell_box)
+
+        # Transform the predicted bounding boxes for the 300x480 image to the original image dimensions.
+        xmin = box[-4] * new_image.shape[1] / img_width
+        ymin = box[-3] * new_image.shape[0] / img_height
+        xmax = box[-2] * new_image.shape[1] / img_width
+        ymax = box[-1] * new_image.shape[0] / img_height
+        print([xmin,ymin,xmax,ymax])
+        label = '{}: {:.2f}'.format(classes[int(box[0])], box[1])
+        print(label)
+        current_axis.add_patch(plt.Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color=color, fill=False, linewidth=2))  
+        current_axis.text(xmin, ymin, label+"_"+str(box_idx), size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
+
+        # draw anchorbox
+        current_axis.add_patch(plt.Rectangle((anchorbox[0], anchorbox[1]), anchorbox[2]-anchorbox[0], anchorbox[3]-anchorbox[1], color=colors[7], fill=False, linewidth=2))  
+        current_axis.text(anchorbox[0], anchorbox[1], "_anchor", size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
+
+        # draw feature region
+        current_axis.add_patch(plt.Rectangle((cell_box[0], cell_box[1]), cell_box[2]-cell_box[0], cell_box[3]-cell_box[1], color=colors[8], fill=False, linewidth=1))  
+        current_axis.text(cell_box[0], cell_box[1], "_feature_zone", size='x-large', color='white', bbox={'facecolor':color, 'alpha':1.0})
+    plt.show()
+
+
+

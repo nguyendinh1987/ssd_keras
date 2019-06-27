@@ -50,15 +50,17 @@ if load_opt == 0:
 
     # 2: Load the trained weights into the model.
     # TODO: Set the path of the trained weights.
-    weights_path = 'output/ssd300_snapshots/weights/ssd300_pascal_07+12_epoch-78_loss-13.047_val_loss-12.8245.h5'
+    weights_path = 'output/ssd300/snapshots/weights/ssd300_pascal_07+12_epoch-78_loss-13.047_val_loss-12.8245.h5'
     model.load_weights(weights_path, by_name=True)
 
     # 3: Compile the model so that Keras won't complain the next time you load it.
     adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
     model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
-else:
+elif load_opt ==1:
     print("develop later")
+else:
+    print("Do not know load_opt. Expect 0/1 but got {}.".format(load_opt))
 
 ############################################################################################################################
 ############################################################################################################################
@@ -102,7 +104,7 @@ results = evaluator(img_height=img_height,
                     batch_size=8,
                     data_generator_mode='resize',
                     round_confidences=False,
-                    matching_iou_threshold=0.5,
+                    matching_iou_threshold=0.1,
                     border_pixels='include',
                     sorting_algorithm='quicksort',
                     average_precision_mode='sample',
@@ -119,6 +121,9 @@ mean_average_precision, average_precisions, precisions, recalls = results
 ###################################################################################################
 # Visualize result
 ######################
+print(average_precisions)
+print("Recall")
+print(recalls)
 for i in range(1, len(average_precisions)):
     print("{:<14}{:<6}{}".format(classes[i], 'AP', round(average_precisions[i], 3)))
 print()
