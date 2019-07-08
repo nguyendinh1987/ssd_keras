@@ -17,7 +17,8 @@ from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
 img_height = 300
 img_width = 300
 n_classes = 2
-global_pos_iou_threshold = 0.3
+global_pos_iou_threshold = 0.4
+
 # # one predictor layer
 # predictor_sizes = [[2,2]]
 # scales=[0.5,1.0]
@@ -50,7 +51,8 @@ ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     pos_iou_threshold=0.5,
                                     global_pos_iou_threshold=global_pos_iou_threshold,
                                     neg_iou_limit=0.5,
-                                    normalize_coords=normalize_coords)
+                                    normalize_coords=normalize_coords,
+                                    iou_type = "to_gt")
 groundtruth_labels = [np.array([[1,50,50,100,100],
                                 [2,150,150,210,230]]).reshape(2,5)]                                
 encoded_input = ssd_input_encoder(groundtruth_labels)
@@ -68,8 +70,8 @@ if show_dummy:
         current_axis.set_xticks(np.arange(0,img_width,img_width/pred_size[1]))
         current_axis.set_yticks(np.arange(0,img_height,img_height/pred_size[0]))
         anchor_start_idx = offset
-        anchor_end_idx = offset + pred_size[0]*pred_size[1] - 1        
-        offset = anchor_end_idx + 1        
+        anchor_end_idx = offset + pred_size[0]*pred_size[1]   
+        offset = anchor_end_idx
         for gt_idx, gt in enumerate(groundtruth_labels):
             for r_idx in range(gt.shape[0]):
                 color = colors[int(gt[r_idx,0])]
@@ -82,7 +84,11 @@ if show_dummy:
                 anchors[:,[-7,-5]] *= img_height
             # get the best anchor boxes
             confident_score = np.copy(anchors[:,1:n_classes+1])
+            print("confident_score")
+            print(confident_score)
             max_conf = np.max(confident_score,axis=-1)
+            print("max_conf")
+            print(max_conf)
             for a_idx in range(anchors.shape[0]):
                 if max_conf[a_idx]>global_pos_iou_threshold:
                     color = colors[10]

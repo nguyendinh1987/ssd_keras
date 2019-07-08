@@ -19,7 +19,7 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 
-from bounding_box_utils.bounding_box_utils import iou, convert_coordinates
+from bounding_box_utils.bounding_box_utils import iou_V1, convert_coordinates
 from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_multi
 
 class SSDInputEncoder_V1:
@@ -54,6 +54,7 @@ class SSDInputEncoder_V1:
                  neg_iou_limit=0.3,
                  border_pixels='half',
                  coords='centroids',
+                 iou_type = 'tradition',
                  normalize_coords=True,
                  background_id=0,
                  encoded_anchors=False):
@@ -172,10 +173,11 @@ class SSDInputEncoder_V1:
         if np.any(variances <= 0):
             raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
 
-        print("coords: {}".format(coords))
-        print("test: {}".format(coords=='original'))
         if not (coords == 'minmax' or coords == 'centroids' or coords == 'corners' or coords == 'original'):
             raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
+
+        if not (iou_type == 'tradition' or iou_type == 'to_anchor' or iou_type == "to_gt"):
+            raise ValueError("Unexpected value for 'iou_type'. Supported values are 'traditional' and 'new'.")
 
         if (not (steps is None)) and (len(steps) != predictor_sizes.shape[0]):
             raise ValueError("You must provide at least one step value per predictor layer.")
@@ -232,6 +234,7 @@ class SSDInputEncoder_V1:
         self.normalize_coords = normalize_coords
         self.background_id = background_id
         self.encoded_anchors = encoded_anchors
+        self.iou_type = iou_type
         # Compute the number of boxes per spatial location for each predictor layer.
         # For example, if a predictor layer has three different aspect ratios, [1.0, 0.5, 2.0], and is
         # supposed to predict two boxes of slightly different size for aspect ratio 1.0, then that predictor
@@ -362,9 +365,15 @@ class SSDInputEncoder_V1:
             classes_one_hot = class_vectors[labels[:, class_id].astype(np.int)] # The one-hot class IDs for the ground truth boxes of this batch item
             labels_one_hot = np.concatenate([classes_one_hot, labels[:, [xmin,ymin,xmax,ymax]]], axis=-1) # The one-hot version of the labels for this batch item
 
-            # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
-            # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
-            similarities = iou(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
+            if self.iou_type == 'tradition':
+                # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
+                # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
+                similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
+            elif self.iou_type == 'to_anchor':
+                # TODO: it is going to be implemented
+                similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="per_box2")
+            elif self.iou_type == 'to_gt':
+                similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="per_box1")                                
             print("similarities")
             print(similarities)
 
@@ -461,6 +470,8 @@ class SSDInputEncoder_V1:
         # Convert box coordinates to anchor box offsets.
         # ---> Need to program my converting algorithm
         ##################################################################################
+        # I need to add one more programe to correct GTs so that all GT boxes are inside 
+        # anchor boxes. Then I could use follow function.
         if self.encoded_anchors:
             if self.coords == 'centroids':
                 y_encoded[:,:,[-12,-11]] -= y_encoded[:,:,[-8,-7]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)
