@@ -7,7 +7,7 @@ from imageio import imread, imwrite
 import numpy as np
 from matplotlib import pyplot as plt
 
-from models.keras_ssd300 import ssd_300
+from models.keras_ssd300_new import ssd_300_new
 from keras_loss_function.keras_ssd_loss import SSDLoss
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
@@ -61,7 +61,7 @@ if load_opt == 1: # Load trained weights into model (designed model is maintaine
     # Build keras model
     # 1: Build the Keras model
     K.clear_session() # Clear previous models from memory.
-    model = ssd_300(image_size=(img_height, img_width, img_channels),
+    model = ssd_300_new(image_size=(img_height, img_width, img_channels),
                     n_classes=n_classes,
                     mode='inference',
                     l2_regularization=0.0005,
@@ -88,7 +88,7 @@ if load_opt == 1: # Load trained weights into model (designed model is maintaine
 else: # Load pretrained model (designed model could be changed by loaded model)
     # TODO: Set the path to the `.h5` file of the model to be loaded.
     from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
-    model_path = 'output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-45_loss-5.1722_val_loss-5.3015.h5'
+    model_path = 'output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-111_loss-4.0906_val_loss-4.5795.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)

@@ -54,46 +54,52 @@ clip_boxes = False # Whether or not to clip the anchor boxes to lie entirely wit
 variances = [0.1, 0.1, 0.2, 0.2] # The variances by which the encoded target coordinates are divided as in the original implementation
 normalize_coords = True
 
-# 1: Build the Keras model.
-K.clear_session() # Clear previous models from memory.
-model = ssd_300(image_size=(img_height, img_width, img_channels),
-                n_classes=n_classes,
-                mode='training',
-                l2_regularization=0.0005,
-                scales=scales,
-                aspect_ratios_per_layer=aspect_ratios,
-                two_boxes_for_ar1=two_boxes_for_ar1,
-                steps=steps,
-                offsets=offsets,
-                clip_boxes=clip_boxes,
-                variances=variances,
-                normalize_coords=normalize_coords,
-                subtract_mean=mean_color,
-                swap_channels=swap_channels)
+load_opts = 0
+if load_opts == 0 or load_opts == 1:
+    # 1: Build the Keras model.
+    K.clear_session() # Clear previous models from memory.
+    model = ssd_300(image_size=(img_height, img_width, img_channels),
+                    n_classes=n_classes,
+                    mode='training',
+                    l2_regularization=0.0005,
+                    scales=scales,
+                    aspect_ratios_per_layer=aspect_ratios,
+                    two_boxes_for_ar1=two_boxes_for_ar1,
+                    steps=steps,
+                    offsets=offsets,
+                    clip_boxes=clip_boxes,
+                    variances=variances,
+                    normalize_coords=normalize_coords,
+                    subtract_mean=mean_color,
+                    swap_channels=swap_channels)
+    if load_opts == 1:
+        # 2: Load some weights into the model.
+        ############################################################################################
+        ## TODO: Set the path to the weights you want to load.
+        weights_path = ''
+        assert len(weights_path) > 0, "weights_path is not available"
+        model.load_weights(weights_path, by_name=True)
 
-# 2: Load some weights into the model.
-############################################################################################
-## TODO: Set the path to the weights you want to load.
-#weights_path = 'output/ssd300_snapshots/weights/ssd300_pascal_07+12_epoch-30_loss-14.7925_val_loss-14.6434.h5'
-#model.load_weights(weights_path, by_name=True)
-
-# 3: Instantiate an optimizer and the SSD loss function and compile the model.
-#    If you want to follow the original Caffe implementation, use the preset SGD
-#    optimizer, otherwise I'd recommend the commented-out Adam optimizer.
-#adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
-#sgd = SGD(lr=0.001, momentum=0.9, decay=0.0, nesterov=False)
-#ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
-#model.compile(optimizer=sgd, loss=ssd_loss.compute_loss)
-
-## Load a previously created model
-## TODO: Set the path to the `.h5` file of the model to be loaded.
-model_path = 'output/ssd300_snapshots/models/ssd300_pascal_07+12_epoch-01_loss-20.8205_val_loss-16.3313.h5'
-# We need to create an SSDLoss object in order to pass that to the model loader.
-ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
-K.clear_session() # Clear previous models from memory.
-model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
-                                               'L2Normalization': L2Normalization,
-                                               'compute_loss': ssd_loss.compute_loss})
+    # 3: Instantiate an optimizer and the SSD loss function and compile the model.
+    #    If you want to follow the original Caffe implementation, use the preset SGD
+    #    optimizer, otherwise I'd recommend the commented-out Adam optimizer.
+    adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+    #sgd = SGD(lr=0.001, momentum=0.9, decay=0.0, nesterov=False)
+    ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+    model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
+elif load_opts == 2:
+    ## Load a previously created model
+    ## TODO: Set the path to the `.h5` file of the model to be loaded.
+    model_path = ''
+    assert len(model_path) > 0, "model_path is not available"
+    # We need to create an SSDLoss object in order to pass that to the model loader.
+    ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+    K.clear_session() # Clear previous models from memory.
+    model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
+                                                'L2Normalization': L2Normalization,
+                                                'compute_loss': ssd_loss.compute_loss})
+else:
+    print("Unknow load_opts. Expect 0 (for training from scratch), 1 (for loading pretrained weights), 2 (for loading pretrained model), but got {}".format(load_opts))
 
 #################################################################################################
 # Data generator for training
@@ -230,7 +236,7 @@ print("Number of images in the validation dataset:\t{:>6}".format(val_dataset_si
 
 # Define model callbacks.
 # TODO: Set the filepath under which you want to save the model.
-model_checkpoint = ModelCheckpoint(filepath='output/ssd300_snapshots/models/ssd300_pascal_07+12_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
+model_checkpoint = ModelCheckpoint(filepath='output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
                                    monitor='val_loss',
                                    verbose=1,
                                    save_best_only=True,
@@ -238,7 +244,7 @@ model_checkpoint = ModelCheckpoint(filepath='output/ssd300_snapshots/models/ssd3
                                    mode='auto',
                                    period=1)
 #model_checkpoint.best = 
-csv_logger = CSVLogger(filename='output/ssd300_logs/ssd300_pascal_07+12_training_log.csv',
+csv_logger = CSVLogger(filename='output/ssd300_adam/logs/ssd300_pascal_07+12_training_log.csv',
                        separator=',',
                        append=True)
 learning_rate_scheduler = LearningRateScheduler(schedule=lr_schedule,
