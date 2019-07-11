@@ -17,7 +17,7 @@ from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
 img_height = 300
 img_width = 300
 n_classes = 2
-global_pos_iou_threshold = 0.4
+global_pos_iou_threshold = 0.0
 
 # # one predictor layer
 # predictor_sizes = [[2,2]]
@@ -31,6 +31,7 @@ scales=[0.25, 0.33, 0.5, 1.0]
 aspect_ratios_per_layer=[[1.0],[1.0],[1.0]]
 offsets=[0.5,0.5,0.5]
 normalize_coords = True
+clip_gt = True
 
 I = np.ones((img_height,img_width)).astype("uint8")*100
 # I = pil_img.from_array(np.ones((img_height,img_width)).astype("uint8")*100)
@@ -46,6 +47,7 @@ ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     steps=None,
                                     offsets=offsets,
                                     clip_boxes=False,
+                                    clip_gt=clip_gt,
                                     variances=[0.1, 0.1, 0.1, 0.1],
                                     matching_type='multi',
                                     pos_iou_threshold=0.5,
@@ -53,8 +55,9 @@ ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     neg_iou_limit=0.5,
                                     normalize_coords=normalize_coords,
                                     iou_type = "to_gt")
-groundtruth_labels = [np.array([[1,50,50,100,100],
-                                [2,150,150,210,230]]).reshape(2,5)]                                
+groundtruth_labels = [np.array([[1,1,1,25,25],
+                                [1,50,50,98,98],
+                                [2,150,150,210,230]]).reshape(3,5)]                                
 encoded_input = ssd_input_encoder(groundtruth_labels)
 print(encoded_input)
 print(type(encoded_input))
@@ -72,30 +75,38 @@ if show_dummy:
         anchor_start_idx = offset
         anchor_end_idx = offset + pred_size[0]*pred_size[1]   
         offset = anchor_end_idx
+
         for gt_idx, gt in enumerate(groundtruth_labels):
             for r_idx in range(gt.shape[0]):
                 color = colors[int(gt[r_idx,0])]
                 current_axis.add_patch(plt.Rectangle((gt[r_idx,1], gt[r_idx,2]), gt[r_idx,3]-gt[r_idx,1], gt[r_idx,4]-gt[r_idx,2], color=color, fill=False, linewidth=2))  
-        
-            anchors = encoded_input[gt_idx,anchor_start_idx:anchor_end_idx,:]
             # convert to absolute coordinate
+            anchors_vs_gt = encoded_input[gt_idx,anchor_start_idx:anchor_end_idx,:]
+            print("---------------------------------------------------------------")
+            print(anchors_vs_gt)
+            print("------------")            
             if normalize_coords:
-                anchors[:,[-8,-6]] *= img_width
-                anchors[:,[-7,-5]] *= img_height
+                anchors_vs_gt[:,[-12,-10,-8,-6]] *= img_width
+                anchors_vs_gt[:,[-11,-9,-7,-5]] *= img_height
             # get the best anchor boxes
-            confident_score = np.copy(anchors[:,1:n_classes+1])
+            confident_score = np.copy(anchors_vs_gt[:,1:n_classes+1])
             print("confident_score")
             print(confident_score)
             max_conf = np.max(confident_score,axis=-1)
             print("max_conf")
             print(max_conf)
-            for a_idx in range(anchors.shape[0]):
+            for a_idx in range(anchors_vs_gt.shape[0]):
                 if max_conf[a_idx]>global_pos_iou_threshold:
                     color = colors[10]
                     # it is for centroid format
-                    current_axis.add_patch(plt.Rectangle((anchors[a_idx,-8]-int(anchors[a_idx,-6]/2), 
-                                                        anchors[a_idx,-7]-int(anchors[a_idx,-5]/2)), 
-                                                        anchors[a_idx,-6], anchors[a_idx,-5], color=color, fill=False, linewidth=2,linestyle="--"))
+                    current_axis.add_patch(plt.Rectangle((anchors_vs_gt[a_idx,-8]-int(anchors_vs_gt[a_idx,-6]/2), 
+                                                        anchors_vs_gt[a_idx,-7]-int(anchors_vs_gt[a_idx,-5]/2)), 
+                                                        anchors_vs_gt[a_idx,-6], anchors_vs_gt[a_idx,-5], color=color, fill=False, linewidth=2,linestyle="--"))
+                    color = colors[12] # for encoded gt
+                    # it is for centroid format
+                    current_axis.add_patch(plt.Rectangle((anchors_vs_gt[a_idx,-12]-int(anchors_vs_gt[a_idx,-10]/2), 
+                                                        anchors_vs_gt[a_idx,-11]-int(anchors_vs_gt[a_idx,-9]/2)), 
+                                                        anchors_vs_gt[a_idx,-10], anchors_vs_gt[a_idx,-9], color=color, fill=False, linewidth=2,linestyle="--"))                                                        
 
         plt.grid()
         plt.show()

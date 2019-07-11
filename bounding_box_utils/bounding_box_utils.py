@@ -485,7 +485,7 @@ def iou_V1(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixe
 
     if iou_type == "tradition":
         union_areas = boxes1_areas + boxes2_areas - intersection_areas
-    if iou_type == "per_box1":
+    elif iou_type == "per_box1":
         union_areas = boxes1_areas
     elif iou_type == "per_box2":
         union_areas = boxes2_areas

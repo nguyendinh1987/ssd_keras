@@ -20,7 +20,9 @@ from __future__ import division
 import numpy as np
 
 from bounding_box_utils.bounding_box_utils import iou_V1, convert_coordinates
-from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_multi
+from ssd_encoder_decoder.matching_utils import match_bipartite_greedy,match_bipartite_greedy_V1, match_multi, match_multi_V1
+
+debugging = False
 
 class SSDInputEncoder_V1:
     '''
@@ -47,6 +49,7 @@ class SSDInputEncoder_V1:
                  steps=None,
                  offsets=None,
                  clip_boxes=False,
+                 clip_gt=True,
                  variances=[0.1, 0.1, 0.2, 0.2],
                  matching_type='multi',
                  pos_iou_threshold=0.5,
@@ -57,7 +60,7 @@ class SSDInputEncoder_V1:
                  iou_type = 'tradition',
                  normalize_coords=True,
                  background_id=0,
-                 encoded_anchors=False):
+                 encoded_anchors=True):
         '''
         Arguments:
             img_height (int): The height of the input images.
@@ -235,6 +238,7 @@ class SSDInputEncoder_V1:
         self.background_id = background_id
         self.encoded_anchors = encoded_anchors
         self.iou_type = iou_type
+        self.clip_gt = clip_gt
         # Compute the number of boxes per spatial location for each predictor layer.
         # For example, if a predictor layer has three different aspect ratios, [1.0, 0.5, 2.0], and is
         # supposed to predict two boxes of slightly different size for aspect ratio 1.0, then that predictor
@@ -322,7 +326,7 @@ class SSDInputEncoder_V1:
         ##################################################################################
 
         y_encoded = self.generate_encoding_template(batch_size=batch_size, diagnostics=False)
-
+        
         ##################################################################################
         # Match ground truth boxes to anchor boxes.
         ##################################################################################
@@ -334,7 +338,9 @@ class SSDInputEncoder_V1:
         y_encoded[:, :, self.background_id] = 1 # All boxes are background boxes by default.
         n_boxes = y_encoded.shape[1] # The total number of boxes that the model predicts per batch item
         class_vectors = np.eye(self.n_classes) # An identity matrix that we'll use as one-hot class vectors
-
+        if debugging:
+            print("y_encoded")
+            print(y_encoded.shape)
         for i in range(batch_size): # For each batch item...
 
             if ground_truth_labels[i].size == 0: continue # If there is no ground truth for this batch item, there is nothing to match.
@@ -364,7 +370,9 @@ class SSDInputEncoder_V1:
 
             classes_one_hot = class_vectors[labels[:, class_id].astype(np.int)] # The one-hot class IDs for the ground truth boxes of this batch item
             labels_one_hot = np.concatenate([classes_one_hot, labels[:, [xmin,ymin,xmax,ymax]]], axis=-1) # The one-hot version of the labels for this batch item
-
+            if debugging:
+                print("labels_one_hot")
+                print(labels_one_hot.shape)
             if self.iou_type == 'tradition':
                 # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
                 # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
@@ -374,8 +382,9 @@ class SSDInputEncoder_V1:
                 similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="per_box2")
             elif self.iou_type == 'to_gt':
                 similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="per_box1")                                
-            print("similarities")
-            print(similarities)
+            if debugging:
+                print("similarities")
+                print(similarities)
 
             # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
             #        This ensures that each ground truth box will have at least one good match.
@@ -396,11 +405,26 @@ class SSDInputEncoder_V1:
             # step 1: proposal score = iou                                                               #
             # step 1: upgrade proposal score by using yolo object score strategy                         #
             # advance: set threshold to remove best match anchor boxes but with small iou                #
+            # note: Consider a case that two or more anchores include a gt box. In this case, need to    #
+            #       a solution to select anchor: random or smallest one. Need to update function         #
+            #       match_bipartite_greedy                                                               #
+            #       step 1: Find the best iou                                                            #
+            #       step 2: If there are more than two satisfying anchores, it will go to find and select#
+            #               the smallest anchor box                                                      #
+            #       setp 3: If there are more than two satisfying anchores, it will select random or     #
+            #               select both ?????                                                            #   
             ##############################################################################################
             ##############################################################################################
-            bipartite_matches = match_bipartite_greedy(weight_matrix=similarities)
-            print("bipartite_matches")
-            print(bipartite_matches)
+            if self.iou_type != 'tradition':
+                similarities_tradition = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
+
+            if self.iou_type != 'tradition':
+                bipartite_matches = match_bipartite_greedy_V1(similarities,similarities_tradition)
+            else:
+                bipartite_matches = match_bipartite_greedy(weight_matrix=similarities)
+            if debugging:
+                print("bipartite_matches")
+                print(bipartite_matches)
 
             # Write the ground truth data to the matched anchor boxes.
             # Overwrite anchorboxes that are the best match with groundtruth by labels_one_hot
@@ -410,28 +434,31 @@ class SSDInputEncoder_V1:
             #---------->y_encoded[i, bipartite_matches, :-8] = labels_one_hot
             # clean low iou anchorbox
             if self.global_pos_iou_threshold >0.0:
-                anchor_iou = np.transpose(similarities[:,bipartite_matches])
-                max_iou = np.max(anchor_iou,axis=-1)
+                # Update labels_one_hot
+                labels_one_hot_1 = np.copy(labels_one_hot)
+                tmp_loh = labels_one_hot_1[:,:-4]
+                tmp_loh[tmp_loh==1.0] = similarities[range(similarities.shape[0]),bipartite_matches]
+                
                 filtered_bipartite_matches = []
                 detected_gt = []
-                for match_idx in range(len(bipartite_matches)):
-                    if max_iou[match_idx]>self.global_pos_iou_threshold:
+                for match_idx in range(tmp_loh.shape[0]):
+                    if tmp_loh[tmp_loh>0.0]>self.global_pos_iou_threshold:
                         filtered_bipartite_matches.append(bipartite_matches[match_idx])
                         detected_gt.append(match_idx)
-
-                bg_class = np.zeros((len(filtered_bipartite_matches),1))
-                y_encoded[i,filtered_bipartite_matches,:-8] = np.concatenate([bg_class,
-                                                                              np.transpose(similarities[:,filtered_bipartite_matches]),
-                                                                              labels_one_hot[detected_gt,self.n_classes:]],axis=-1)
+                
+                y_encoded[i, filtered_bipartite_matches, :-8] = labels_one_hot_1[detected_gt,:]
             else:                                                                        
-                bg_class = np.zeros((len(bipartite_matches),1))
-                y_encoded[i,bipartite_matches,:-8] = np.concatenate([bg_class,
-                                                                     np.transpose(similarities[:,bipartite_matches]),
-                                                                     labels_one_hot[:,self.n_classes:]],axis=-1)
+                # Update labels_one_hot:
+                labels_one_hot_1 = np.copy(labels_one_hot)
+                tmp_loh = labels_one_hot_1[:,:-4]
+                tmp_loh[tmp_loh==1.0] = similarities[range(similarities.shape[0]),bipartite_matches]
+                y_encoded[i, bipartite_matches, :-8] = labels_one_hot_1
 
             # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
             similarities[:, bipartite_matches] = 0
-
+            if debugging:
+                print("similarities after removing bipartite matches")
+                print(similarities)
             # Second: Maybe do 'multi' matching, where each remaining anchor box will be matched to its most similar
             #         ground truth box with an IoU of at least `pos_iou_threshold`, or not matched if there is no
             #         such ground truth box.
@@ -439,21 +466,35 @@ class SSDInputEncoder_V1:
             if self.matching_type == 'multi':
 
                 # Get all matches that satisfy the IoU threshold.
+                # The current function can only take the maximum overlap gt for each anchor box
                 # matches is a list of two numpy array
                 # matches[0] contains matched gt indexes
                 # matches[1] contains matched anchor indexes
-                matches = match_multi(weight_matrix=similarities, threshold=self.pos_iou_threshold)
-                print("multi-matches")
-                print(matches[0].shape[0])
-                print(matches[1].shape[0])                
+                # 
+                if self.iou_type != 'tradition':
+                    matches = match_multi_V1(similarities, similarities_tradition,self.pos_iou_threshold)
+                else:
+                    matches = match_multi(weight_matrix=similarities, threshold=self.pos_iou_threshold)
+                if debugging:
+                    print("multi-matches")
+                    print(matches[0].shape[0])
+                    print(matches[0])
+                    print(matches[1].shape[0])                
+                    print(matches[1])
 
                 # Write the ground truth data to the matched anchor boxes.
                 ########################################################################################
                 #---> Here could be for gtboxes that overlap with anchorboxes                      <---#
                 ########################################################################################
                 #------------>y_encoded[i, matches[1], :-8] = labels_one_hot[matches[0]]                
-                bg_class = np.zeros((matches[0].shape[0],1))
-                y_encoded[i, matches[1], :-8] = np.concatenate([bg_class,np.transpose(similarities[:,matches[1]]),labels_one_hot[matches[0],self.n_classes:]],axis=-1)
+                # Update labels_one_hot
+                labels_one_hot_1 = np.copy(labels_one_hot)
+                for match_idx, gt_idx in enumerate(matches[0]):
+                    tmp_loh = labels_one_hot_1[gt_idx,:-4]
+                    tmp_loh[tmp_loh==1.0] = similarities[gt_idx,matches[1][match_idx]]
+                y_encoded[i,matches[1],:-8] = labels_one_hot_1[matches[0]]   
+                # bg_class = np.zeros((matches[0].shape[0],1))
+                # y_encoded[i, matches[1], :-8] = np.concatenate([bg_class,np.transpose(similarities[:,matches[1]]),labels_one_hot[matches[0],self.n_classes:]],axis=-1)
 
                 # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
                 similarities[:, matches[1]] = 0
@@ -472,6 +513,55 @@ class SSDInputEncoder_V1:
         ##################################################################################
         # I need to add one more programe to correct GTs so that all GT boxes are inside 
         # anchor boxes. Then I could use follow function.
+        if self.clip_gt:
+            # GT boxes and anchor boxes index in y_encoded
+            # n_classes+1;[gt_coordinate(4)][anchor_coordinate(4)][variance(4)]
+            if self.coords == 'centroids':
+                # gt and anchor coordinate: cx,cy,w,h
+                gt_minmax = convert_coordinates(y_encoded[:,:,-12:-8],start_index=0,conversion='centroids2minmax',border_pixels=self.border_pixels)
+                anchor_minmax = convert_coordinates(y_encoded[:,:,-8:-4],start_index=0,conversion='centroids2minmax',border_pixels=self.border_pixels)
+            elif self.coords == 'corners':
+                # gt and anchor coordinate: xmin,ymin,xmax,ymax
+                gt_minmax = convert_coordinates(y_encoded[:,:,-12:-8],start_index=0,conversion='corners2minmax',border_pixels=self.border_pixels)
+                anchor_minmax = convert_coordinates(y_encoded[:,:,-8:-4],start_index=0,conversion='corners2minmax',border_pixels=self.border_pixels)
+            if self.coords == 'minmax':
+                gt_minmax = np.copy(y_encoded[:,:,-12:-8])
+                anchor_minmax = np.copy(y_encoded[:,:,-8:-4])
+            # print(gt_minmax[:,:,0].shape)
+            # print(anchor_minmax.shape)
+            # print(np.concatenate((np.expand_dims(gt_minmax[:,:,0],axis=-1),
+            #                       np.expand_dims(anchor_minmax[:,:,0],axis=-1)),
+            #                       axis=-1).shape)
+            gt_minmax[:,:,0] = np.max(np.concatenate((np.expand_dims(gt_minmax[:,:,0],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,0],axis=-1)),
+                                          axis=-1),
+                                          axis=-1
+                                          )
+            gt_minmax[:,:,1] = np.min(np.concatenate((np.expand_dims(gt_minmax[:,:,1],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,1],axis=-1)),
+                                          axis=-1),
+                                          axis = -1
+                                          )
+            gt_minmax[:,:,2] = np.max(np.concatenate((np.expand_dims(gt_minmax[:,:,2],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,2],axis=-1)),
+                                          axis=-1),
+                                          axis=-1
+                                          )
+            gt_minmax[:,:,3] = np.min(np.concatenate((np.expand_dims(gt_minmax[:,:,3],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,3],axis=-1)),
+                                          axis=-1),
+                                          axis = -1
+                                          )                                                                                   
+           #
+            if self.coords == 'centroids':
+                gt = convert_coordinates(gt_minmax,start_index=0,conversion='minmax2centroids',border_pixels=self.border_pixels)
+            elif self.coords == 'corners':
+                gt = convert_coordinates(gt_minmax,start_index=0,conversion='minmax2corners',border_pixels=self.border_pixels)
+            y_encoded[:,:,-12:-8] = gt                    
+
+        ###########################################################################################################
+        # Need to add one more encode function. When encoding function is add, the output decoder is also needed to
+        # add a decoding function.
         if self.encoded_anchors:
             if self.coords == 'centroids':
                 y_encoded[:,:,[-12,-11]] -= y_encoded[:,:,[-8,-7]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)

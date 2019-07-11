@@ -13,7 +13,7 @@ from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
 from keras_layers.keras_layer_L2Normalization import L2Normalization
 
-from ssd_encoder_decoder.ssd_input_encoder import SSDInputEncoder
+from ssd_encoder_decoder.ssd_input_encoder_V1 import SSDInputEncoder_V1
 from ssd_encoder_decoder.ssd_output_decoder import decode_detections, decode_detections_fast
 
 from data_generator.object_detection_2d_data_generator import DataGenerator
@@ -56,7 +56,7 @@ two_boxes_for_ar1 = False
 steps= None
 offsets = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5] # The offsets of the first anchor box center points from the top and left borders of the image as a fraction of the step size for each predictor layer.
 
-clip_boxes = False # Whether or not to clip the anchor boxes to lie entirely within the image boundaries
+clip_boxes = True # Whether or not to clip the anchor boxes to lie entirely within the image boundaries
 variances = [0.1, 0.1, 0.1, 0.1] # The variances by which the encoded target coordinates are divided as in the original implementation
 normalize_coords = True
 
@@ -205,7 +205,7 @@ predictor_sizes = [model.get_layer('pool3_mbox_conf').output_shape[1:3],
                    model.get_layer('pool5_mbox_conf').output_shape[1:3],
                    model.get_layer('fc7_mbox_conf').output_shape[1:3],
                    model.get_layer('conv6_2_mbox_conf').output_shape[1:3]]
-ssd_input_encoder = SSDInputEncoder(img_height=img_height,
+ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     img_width=img_width,
                                     n_classes=n_classes,
                                     predictor_sizes=predictor_sizes,
@@ -219,7 +219,11 @@ ssd_input_encoder = SSDInputEncoder(img_height=img_height,
                                     matching_type='multi',
                                     pos_iou_threshold=0.5,
                                     neg_iou_limit=0.5,
-                                    normalize_coords=normalize_coords)
+                                    normalize_coords=normalize_coords,
+                                    # new
+                                    iou_type = "to_gt",
+                                    clip_gt=True,
+                                    global_pos_iou_threshold=0.0)
 
 # 6: Create the generator handles that will be passed to Keras' `fit_generator()` function.
 train_generator = train_dataset.generate(batch_size=batch_size,

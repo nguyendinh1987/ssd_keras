@@ -19,6 +19,33 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 
+def match_bipartite_greedy_V1(weight_matrix_1, weight_matrix_2):
+    '''
+    - The weight_matrix_1 is variant IoU between two lists of boxes. It repsects to 
+    area covered by one of two boxes
+    - The weight_matrix_2 is offical IoU between two lists of boxes.
+    - This function is to deal with a case that there are a groundtruth box are 
+    covered by many anchor boxes. It will try to select the smallest anchor box.
+    '''
+    weight_matrix = np.copy(weight_matrix_1) # We'll modify this array.
+    num_ground_truth_boxes = weight_matrix.shape[0]
+    all_gt_indices = list(range(num_ground_truth_boxes)) # Only relevant for fancy-indexing below.
+
+    # This 1D array will contain for each ground truth box the index of
+    # the matched anchor box.
+    matches = np.zeros(num_ground_truth_boxes, dtype=np.int) 
+
+    for gt_indice in all_gt_indices:
+        tmp = weight_matrix_1[gt_indice]
+        anchor_indices = np.where(tmp==np.max(tmp))[0]
+        if anchor_indices.shape[0]>1:
+            tmp_2 = weight_matrix_2[gt_indice,anchor_indices]
+            anchor_indice = anchor_indices[np.argmax(tmp_2)]
+            matches[gt_indice] = anchor_indice
+        else:
+            matches[gt_indice] = anchor_indices[0]
+    return matches
+
 def match_bipartite_greedy(weight_matrix):
     '''
     Returns a bipartite matching according to the given weight matrix.
@@ -77,6 +104,38 @@ def match_bipartite_greedy(weight_matrix):
         weight_matrix[:,anchor_index] = 0
 
     return matches
+
+def match_multi_V1(weight_matrix_1, weight_matrix_2, threshold):
+    '''
+    Give my explaination here
+    '''
+    num_anchor_boxes = weight_matrix_1.shape[1]
+    all_anchor_indices = list(range(num_anchor_boxes)) # Only relevant for fancy-indexing below.    
+
+    # Find the best ground truth match for every anchor box.
+    gt_indices_thresh_met = []
+    anchor_indices_thresh_met = []
+    for anchor_indice in all_anchor_indices:
+        tmp = weight_matrix_1[:,anchor_indice]
+        
+        if np.max(tmp)<threshold:
+            continue
+        
+        anchor_indices_thresh_met.append(anchor_indice)
+        
+        # [0] because len(tuple)=1
+        gt_indices = np.where(tmp==np.max(tmp))[0] 
+        if gt_indices.shape[0]>1:
+            tmp_2 = weight_matrix_2[gt_indices,anchor_indice]
+            gt_indice = gt_indices[np.argmax(tmp_2)]
+            gt_indices_thresh_met.append(gt_indice)
+        else:
+            # [0] because we process column by column so the numpy array has only one element
+            gt_indices_thresh_met.append(gt_indices[0])
+        
+    return np.array(gt_indices_thresh_met), np.array(anchor_indices_thresh_met)
+
+
 
 def match_multi(weight_matrix, threshold):
     '''
