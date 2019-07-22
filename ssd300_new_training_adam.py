@@ -217,13 +217,13 @@ ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     clip_boxes=clip_boxes,
                                     variances=variances,
                                     matching_type='multi',
-                                    pos_iou_threshold=0.5,
-                                    neg_iou_limit=0.5,
+                                    pos_iou_threshold=0.7,
+                                    neg_iou_limit=0.3,
                                     normalize_coords=normalize_coords,
                                     # new
                                     iou_type = "to_gt",
                                     clip_gt=True,
-                                    global_pos_iou_threshold=0.0)
+                                    global_pos_iou_threshold=0.5)
 
 # 6: Create the generator handles that will be passed to Keras' `fit_generator()` function.
 train_generator = train_dataset.generate(batch_size=batch_size,

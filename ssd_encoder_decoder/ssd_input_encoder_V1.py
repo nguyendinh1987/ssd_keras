@@ -379,9 +379,13 @@ class SSDInputEncoder_V1:
                 similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
             elif self.iou_type == 'to_anchor':
                 # TODO: it is going to be implemented
+                similarities_tradition = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
                 similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="per_box2")
+                # similarities = np.multiply(similarities,similarities_tradition)
             elif self.iou_type == 'to_gt':
+                similarities_tradition = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
                 similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="per_box1")                                
+                similarities = np.multiply(similarities,similarities_tradition)
             if debugging:
                 print("similarities")
                 print(similarities)
@@ -415,8 +419,8 @@ class SSDInputEncoder_V1:
             #               select both ?????                                                            #   
             ##############################################################################################
             ##############################################################################################
-            if self.iou_type != 'tradition':
-                similarities_tradition = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
+            # if self.iou_type != 'tradition':
+                # similarities_tradition = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
 
             if self.iou_type != 'tradition':
                 bipartite_matches = match_bipartite_greedy_V1(similarities,similarities_tradition)
@@ -442,7 +446,7 @@ class SSDInputEncoder_V1:
                 filtered_bipartite_matches = []
                 detected_gt = []
                 for match_idx in range(tmp_loh.shape[0]):
-                    if tmp_loh[tmp_loh>0.0]>self.global_pos_iou_threshold:
+                    if np.any(tmp_loh[match_idx,:]>self.global_pos_iou_threshold):
                         filtered_bipartite_matches.append(bipartite_matches[match_idx])
                         detected_gt.append(match_idx)
                 
@@ -488,16 +492,17 @@ class SSDInputEncoder_V1:
                 ########################################################################################
                 #------------>y_encoded[i, matches[1], :-8] = labels_one_hot[matches[0]]                
                 # Update labels_one_hot
-                labels_one_hot_1 = np.copy(labels_one_hot)
-                for match_idx, gt_idx in enumerate(matches[0]):
-                    tmp_loh = labels_one_hot_1[gt_idx,:-4]
-                    tmp_loh[tmp_loh==1.0] = similarities[gt_idx,matches[1][match_idx]]
-                y_encoded[i,matches[1],:-8] = labels_one_hot_1[matches[0]]   
-                # bg_class = np.zeros((matches[0].shape[0],1))
-                # y_encoded[i, matches[1], :-8] = np.concatenate([bg_class,np.transpose(similarities[:,matches[1]]),labels_one_hot[matches[0],self.n_classes:]],axis=-1)
+                if matches[0].shape[0]>0:
+                    labels_one_hot_1 = np.copy(labels_one_hot)
+                    for match_idx, gt_idx in enumerate(matches[0]):
+                        tmp_loh = labels_one_hot_1[gt_idx,:-4]
+                        tmp_loh[tmp_loh==1.0] = similarities[gt_idx,matches[1][match_idx]]
+                    y_encoded[i,matches[1],:-8] = labels_one_hot_1[matches[0]]   
+                    # bg_class = np.zeros((matches[0].shape[0],1))
+                    # y_encoded[i, matches[1], :-8] = np.concatenate([bg_class,np.transpose(similarities[:,matches[1]]),labels_one_hot[matches[0],self.n_classes:]],axis=-1)
 
-                # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
-                similarities[:, matches[1]] = 0
+                    # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
+                    similarities[:, matches[1]] = 0
 
             # Third: Now after the matching is done, all negative (background) anchor boxes that have
             #        an IoU of `neg_iou_limit` or more with any ground truth box will be set to neutral,

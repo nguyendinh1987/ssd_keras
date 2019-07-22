@@ -17,7 +17,7 @@ from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
 img_height = 300
 img_width = 300
 n_classes = 2
-global_pos_iou_threshold = 0.0
+global_pos_iou_threshold = 0.1
 
 # # one predictor layer
 # predictor_sizes = [[2,2]]
@@ -50,11 +50,12 @@ ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     clip_gt=clip_gt,
                                     variances=[0.1, 0.1, 0.1, 0.1],
                                     matching_type='multi',
-                                    pos_iou_threshold=0.5,
+                                    pos_iou_threshold=0.8,
                                     global_pos_iou_threshold=global_pos_iou_threshold,
                                     neg_iou_limit=0.5,
                                     normalize_coords=normalize_coords,
-                                    iou_type = "to_gt")
+                                    iou_type = "to_gt",
+                                    encoded_anchors=False)
 groundtruth_labels = [np.array([[1,1,1,25,25],
                                 [1,50,50,98,98],
                                 [2,150,150,210,230]]).reshape(3,5)]                                
