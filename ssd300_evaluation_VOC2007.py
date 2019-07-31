@@ -4,6 +4,7 @@ from keras.optimizers import Adam
 from imageio import imread
 import numpy as np
 from matplotlib import pyplot as plt
+import sys
 
 from models.keras_ssd300 import ssd_300
 from keras_loss_function.keras_ssd_loss import SSDLoss
@@ -18,7 +19,7 @@ from eval_utils.average_precision_evaluator import Evaluator
 img_height = 300
 img_width = 300
 n_classes = 20
-model_mode = 'inference'
+model_mode = 'training'#'inference'
 
 load_opt = 0 # 0: load weight ; 1: load model
 if load_opt == 0:
@@ -57,11 +58,12 @@ if load_opt == 0:
     adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
     model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
+    model.summary()
+    # sys.exit()
 elif load_opt ==1:
     print("develop later")
 else:
     print("Do not know load_opt. Expect 0/1 but got {}.".format(load_opt))
-
 ############################################################################################################################
 ############################################################################################################################
 # Create data generator

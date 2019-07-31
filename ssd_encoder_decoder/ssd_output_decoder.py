@@ -198,7 +198,6 @@ def decode_detections(y_pred,
         y_pred_decoded_raw[:,:,[-3,-1]] *= img_height # Convert ymin, ymax back to absolute coordinates
 
     # 3: Apply confidence thresholding and non-maximum suppression per class
-
     n_classes = y_pred_decoded_raw.shape[-1] - 4 # The number of classes is the length of the last axis minus the four box coordinates
 
     y_pred_decoded = [] # Store the final predictions in this list

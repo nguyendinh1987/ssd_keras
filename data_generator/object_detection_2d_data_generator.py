@@ -954,7 +954,6 @@ class DataGenerator:
         if not (self.labels is None):
             for transform in transformations:
                 transform.labels_format = self.labels_format
-
         #############################################################################################
         # Generate mini batches.
         #############################################################################################
