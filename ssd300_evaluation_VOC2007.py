@@ -19,7 +19,7 @@ from eval_utils.average_precision_evaluator import Evaluator
 img_height = 300
 img_width = 300
 n_classes = 20
-model_mode = 'training'#'inference'
+model_mode = 'inference'#'inference'
 
 load_opt = 0 # 0: load weight ; 1: load model
 if load_opt == 0:
