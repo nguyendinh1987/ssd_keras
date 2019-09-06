@@ -382,7 +382,7 @@ def iou(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixels=
 
     return intersection_areas / union_areas
 
-def iou_V1(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixels='half', iou_type="tradition"):
+def iou_V1(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixels='half', iou_type="iou"):
     '''
     Computes the intersection-over-union similarity (also known as Jaccard similarity)
     of two sets of axis-aligned 2D rectangular boxes.
@@ -483,11 +483,11 @@ def iou_V1(boxes1, boxes2, coords='centroids', mode='outer_product', border_pixe
         boxes1_areas = (boxes1[:,xmax] - boxes1[:,xmin] + d) * (boxes1[:,ymax] - boxes1[:,ymin] + d)
         boxes2_areas = (boxes2[:,xmax] - boxes2[:,xmin] + d) * (boxes2[:,ymax] - boxes2[:,ymin] + d)
 
-    if iou_type == "tradition":
+    if iou_type == "iou":
         union_areas = boxes1_areas + boxes2_areas - intersection_areas
-    elif iou_type == "per_box1":
+    elif iou_type == "to_box1":
         union_areas = boxes1_areas
-    elif iou_type == "per_box2":
+    elif iou_type == "to_box2":
         union_areas = boxes2_areas
     else:
         raise ValueError("Unknow iou_type")

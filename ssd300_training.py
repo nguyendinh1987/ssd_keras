@@ -26,8 +26,10 @@ import os
 
 def lr_schedule(epoch):
     if epoch < 80:
-        return 0.0001
+        return 0.001
     elif epoch < 100:
+        return 0.0001
+    elif epoch < 800:
         return 0.00001
     else:
         return 0.000001
@@ -38,9 +40,6 @@ img_channels = 3 # Number of color channels of the model input images
 mean_color = [123, 117, 104] # The per-channel mean of the images in the dataset. Do not change this value if you're using any of the pre-trained weights.
 swap_channels = [2, 1, 0] # The color channel order in the original SSD is BGR, so we'll have the model reverse the color channel order of the input images.
 n_classes = 20 # Number of positive classes, e.g. 20 for Pascal VOC, 80 for MS COCO
-scales_pascal = [0.1, 0.2, 0.37, 0.54, 0.71, 0.88, 1.05] # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets
-scales_coco = [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05] # The anchor box scaling factors used in the original SSD300 for the MS COCO datasets
-scales = scales_pascal
 aspect_ratios = [[1.0, 2.0, 0.5],
                  [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
                  [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
@@ -54,8 +53,15 @@ clip_boxes = False # Whether or not to clip the anchor boxes to lie entirely wit
 variances = [0.1, 0.1, 0.2, 0.2] # The variances by which the encoded target coordinates are divided as in the original implementation
 normalize_coords = True
 
+# Need to find reason for these below options
+scales_pascal = [0.1, 0.2, 0.37, 0.54, 0.71, 0.88, 1.05] # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets
+scales_coco = [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05] # The anchor box scaling factors used in the original SSD300 for the MS COCO datasets
+scales = scales_pascal
+steps = [8, 16, 32, 64, 100, 300] # The space between two adjacent anchor box center points for each predictor layer.
+variances = [0.1, 0.1, 0.2, 0.2] # The variances by which the encoded target coordinates are divided as in the original implementation
+
 load_opts = 0
-if load_opts == 0 or load_opts == 1:
+if load_opts == 0: # train from scratch
     # 1: Build the Keras model.
     K.clear_session() # Clear previous models from memory.
     model = ssd_300(image_size=(img_height, img_width, img_channels),
@@ -72,13 +78,6 @@ if load_opts == 0 or load_opts == 1:
                     normalize_coords=normalize_coords,
                     subtract_mean=mean_color,
                     swap_channels=swap_channels)
-    if load_opts == 1:
-        # 2: Load some weights into the model.
-        ############################################################################################
-        ## TODO: Set the path to the weights you want to load.
-        weights_path = ''
-        assert len(weights_path) > 0, "weights_path is not available"
-        model.load_weights(weights_path, by_name=True)
 
     # 3: Instantiate an optimizer and the SSD loss function and compile the model.
     #    If you want to follow the original Caffe implementation, use the preset SGD
@@ -87,8 +86,16 @@ if load_opts == 0 or load_opts == 1:
     #sgd = SGD(lr=0.001, momentum=0.9, decay=0.0, nesterov=False)
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
     model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
-elif load_opts == 2:
-    ## Load a previously created model
+elif load_opts == 1: # load weight
+    print("Not available yet")    
+    # if load_opts == 1:
+    # # 2: Load some weights into the model.
+    # ############################################################################################
+    # ## TODO: Set the path to the weights you want to load.
+    # weights_path = ''
+    # assert len(weights_path) > 0, "weights_path is not available"
+    # model.load_weights(weights_path, by_name=True)
+elif load_opts == 2: # Load a previously created model
     ## TODO: Set the path to the `.h5` file of the model to be loaded.
     model_path = ''
     assert len(model_path) > 0, "model_path is not available"
@@ -260,7 +267,7 @@ callbacks = [model_checkpoint,
 ################################################################################################
 # If you're resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch   = 0
-final_epoch     = 120
+final_epoch     = 1200
 steps_per_epoch = 1000
 
 history = model.fit_generator(generator=train_generator,

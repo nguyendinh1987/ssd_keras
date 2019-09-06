@@ -33,9 +33,8 @@ img_channels = 3 # Number of color channels of the model input images
 mean_color = [123, 117, 104] # The per-channel mean of the images in the dataset. Do not change this value if you're using any of the pre-trained weights.
 swap_channels = [2, 1, 0] # The color channel order in the original SSD is BGR, so we'll have the model reverse the color channel order of the input images.
 n_classes = 20 # Number of positive classes, e.g. 20 for Pascal VOC, 80 for MS COCO
-# scales_pascal = [0.1, 0.2, 0.37, 0.54, 0.71, 0.88, 1.05] # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets
-# scales_coco = [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05] # The anchor box scaling factors used in the original SSD300 for the MS COCO datasets
-# scales = scales_pascal
+
+# This scale is calculated base on perspective view and image size
 scales = [0.147,0.307,0.547,0.76,0.867,0.973,1.0]
 
 # aspect_ratios = [[1.0, 2.0, 0.5],
@@ -44,6 +43,8 @@ scales = [0.147,0.307,0.547,0.76,0.867,0.973,1.0]
 #                  [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
 #                  [1.0, 2.0, 0.5],
 #                  [1.0, 2.0, 0.5]] # The anchor box aspect ratios used in the original SSD300; the order matters
+
+# All anchorboxes are square
 aspect_ratios = [[1.0],[1.0],[1.0],[1.0],[1.0],[1.0]]
 
 # steps = [8, 16, 32, 64, 100, 300] # The space between two adjacent anchor box center points for each predictor layer.
@@ -88,7 +89,7 @@ if load_opt == 1: # Load trained weights into model (designed model is maintaine
 else: # Load pretrained model (designed model could be changed by loaded model)
     # TODO: Set the path to the `.h5` file of the model to be loaded.
     from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
-    model_path = 'output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-111_loss-4.0906_val_loss-4.5795.h5'
+    model_path = 'output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-115_loss-2.7311_val_loss-2.8173.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)

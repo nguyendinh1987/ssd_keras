@@ -199,6 +199,10 @@ class Evaluator:
                                 round_confidences=round_confidences,
                                 verbose=verbose,
                                 ret=False)
+        # the output is recorded in self.prediction_results. It is a list having length equal to 
+        # #classes and list item is a list of detected boxes for a single class. The items'order respects
+        # to the class list order.
+        # predicted_results = [detected_boxes_of_class[0], detected_boxes_of_class[1], ... ]
 
         #############################################################################################
         # Get the total number of ground truth boxes for each class.
@@ -207,6 +211,7 @@ class Evaluator:
         self.get_num_gt_per_class(ignore_neutral_boxes=ignore_neutral_boxes,
                                   verbose=False,
                                   ret=False)
+        # the result is recorded in self.num_gt_per_class. It is 1D numpy array with length of #class+1
 
         #############################################################################################
         # Match predictions to ground truth boxes for all classes.
@@ -395,6 +400,12 @@ class Evaluator:
                 for i in range(len(y_pred)):
                     y_pred_filtered.append(y_pred[i][y_pred[i,:,0] != 0])
                 y_pred = y_pred_filtered
+            # NOTE: my adding function is inside [-- --]
+            # [----------------------------
+            # if verbose:
+            #     print("decoded y_pred")
+            #     print(y_pred)
+            # -----------------------------]
             # Convert the predicted box coordinates for the original images.
             y_pred = apply_inverse_transforms(y_pred, batch_inverse_transforms)
 
@@ -617,6 +628,14 @@ class Evaluator:
                 print("No predictions for class {}/{}".format(class_id, self.n_classes))
                 true_positives.append(true_pos)
                 false_positives.append(false_pos)
+                # NOTE: my code is between [--]
+                # [----------------------------------------
+                cumulative_true_pos = np.cumsum(true_pos) # Cumulative sums of the true positives
+                cumulative_false_pos = np.cumsum(false_pos) # Cumulative sums of the false positives
+
+                cumulative_true_positives.append(cumulative_true_pos)
+                cumulative_false_positives.append(cumulative_false_pos)
+                # -----------------------------------------]
                 continue
 
             # Convert the predictions list for this class into a structured array so that we can sort it by confidence.
@@ -757,6 +776,13 @@ class Evaluator:
 
         cumulative_precisions = [[]]
         cumulative_recalls = [[]]
+
+        # NOTE: my code is between [----
+        # ------]
+        # [------------------------------
+        if verbose:
+            print("cumulative_true_positives lenght {}".format(len(self.cumulative_true_positives)))
+        # -------------------------------]
 
         # Iterate over all classes.
         for class_id in range(1, self.n_classes + 1):

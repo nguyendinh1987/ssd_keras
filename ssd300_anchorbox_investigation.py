@@ -93,6 +93,7 @@ else: # Load pretrained model (designed model could be changed by loaded model)
     train_model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
                                                          'L2Normalization': L2Normalization,
                                                          'compute_loss': ssd_loss.compute_loss})
+    # Add the prediction layer                                                         
     train_output_layer = "predictions"
     predictions = train_model.get_layer(train_output_layer).output
     decoded_predictions = DecodeDetections_V1(confidence_thresh=0.01,

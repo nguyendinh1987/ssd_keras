@@ -35,15 +35,37 @@ def match_bipartite_greedy_V1(weight_matrix_1, weight_matrix_2):
     # the matched anchor box.
     matches = np.zeros(num_ground_truth_boxes, dtype=np.int) 
 
-    for gt_indice in all_gt_indices:
-        tmp = weight_matrix_1[gt_indice]
-        anchor_indices = np.where(tmp==np.max(tmp))[0]
-        if anchor_indices.shape[0]>1:
-            tmp_2 = weight_matrix_2[gt_indice,anchor_indices]
-            anchor_indice = anchor_indices[np.argmax(tmp_2)]
-            matches[gt_indice] = anchor_indice
-        else:
-            matches[gt_indice] = anchor_indices[0]
+    for _ in range(num_ground_truth_boxes):
+        # Find the maximal anchor-ground truth pair in two steps: First, reduce
+        # over the anchor boxes and then reduce over the ground truth boxes.
+        anchor_indices = np.argmax(weight_matrix, axis=1) # Reduce along the anchor box axis.
+        overlaps = weight_matrix[all_gt_indices, anchor_indices]
+        ground_truth_index = np.argmax(overlaps) # Reduce along the ground truth box axis.
+        anchor_index = anchor_indices[ground_truth_index]
+        
+        # get max value
+        max_value = weight_matrix[ground_truth_index,anchor_index]
+        gt_indices, anchor_indices = np.where(weight_matrix==max_value)
+      
+        # len(gt_indices) = len(anchor_indices) can be more than 1, 
+        # if len(gt_indices) > 1:
+        #   using weight_matrix_2 to clean
+        # else:
+        #   keep original resuls
+        if len(gt_indices) > 1:
+            overlaps_2 = weight_matrix_2[gt_indices,anchor_indices]
+            max_index_2 = np.argmax(overlaps_2)
+            ground_truth_index = gt_indices[max_index_2]
+            anchor_index = anchor_indices[max_index_2]
+                
+        matches[ground_truth_index] = anchor_index # Set the match.
+
+        # Set the row of the matched ground truth box and the column of the matched
+        # anchor box to all zeros. This ensures that those boxes will not be matched again,
+        # because they will never be the best matches for any other boxes.
+        weight_matrix[ground_truth_index] = 0
+        weight_matrix[:,anchor_index] = 0
+
     return matches
 
 def match_bipartite_greedy(weight_matrix):

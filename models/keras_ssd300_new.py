@@ -171,8 +171,8 @@ def ssd_300_new(image_size,
     References:
         https://arxiv.org/abs/1512.02325v5
     '''
-
-    n_predictor_layers = 6 # The number of predictor conv layers in the network is 6 for the original SSD300.
+    # TODO: move n_predictor_layers to input parameters.
+    n_predictor_layers = 6 
     n_classes += 1 # Account for the background class.
     l2_reg = l2_regularization # Make the internal name shorter.
     img_height, img_width, img_channels = image_size[0], image_size[1], image_size[2]

@@ -1,5 +1,5 @@
 from keras import backend as K
-from keras.models import load_model
+from keras.models import load_model,Model
 from keras.optimizers import Adam
 from imageio import imread
 import numpy as np
@@ -21,7 +21,7 @@ img_width = 300
 n_classes = 20
 model_mode = 'inference'#'inference'
 
-load_opt = 0 # 0: load weight ; 1: load model
+load_opt = 1 # 0: load weight ; 1: load model
 if load_opt == 0:
     # 1: Build the Keras model
     K.clear_session() # Clear previous models from memory.
@@ -51,7 +51,7 @@ if load_opt == 0:
 
     # 2: Load the trained weights into the model.
     # TODO: Set the path of the trained weights.
-    weights_path = 'output/ssd300/snapshots/weights/ssd300_pascal_07+12_epoch-78_loss-13.047_val_loss-12.8245.h5'
+    weights_path = 'output/ssd300/snapshots/weights/ssd300_pascal_07+12_epoch-180_loss-4.6135_val_loss-4.3133.h5'
     model.load_weights(weights_path, by_name=True)
 
     # 3: Compile the model so that Keras won't complain the next time you load it.
@@ -61,7 +61,30 @@ if load_opt == 0:
     model.summary()
     # sys.exit()
 elif load_opt ==1:
-    print("develop later")
+    # from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
+    from keras_layers.keras_layer_DecodeDetections import DecodeDetections
+    model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-346_loss-4.5131_val_loss-4.2195.h5'
+    
+    # We need to create an SSDLoss object in order to pass that to the model loader.
+    ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+    K.clear_session() # Clear previous models from memory.
+    train_model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
+                                                         'L2Normalization': L2Normalization,
+                                                         'compute_loss': ssd_loss.compute_loss})
+    train_output_layer = "predictions"
+    predictions = train_model.get_layer(train_output_layer).output
+    decoded_predictions = DecodeDetections(confidence_thresh=0.5,
+                                           iou_threshold=0.5,
+                                           top_k=200,
+                                           nms_max_output_size=400,
+                                           coords='centroids',
+                                           normalize_coords=True,
+                                           img_height=img_height,
+                                           img_width=img_width,
+                                           name='decoded_predictions')(predictions)
+    model = Model(input = train_model.input,
+                  output= decoded_predictions)
+    print(model.summary())
 else:
     print("Do not know load_opt. Expect 0/1 but got {}.".format(load_opt))
 ############################################################################################################################
@@ -125,7 +148,7 @@ mean_average_precision, average_precisions, precisions, recalls = results
 ######################
 print(average_precisions)
 print("Recall")
-print(recalls)
+#print(recalls)
 for i in range(1, len(average_precisions)):
     print("{:<14}{:<6}{}".format(classes[i], 'AP', round(average_precisions[i], 3)))
 print()

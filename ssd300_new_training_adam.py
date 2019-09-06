@@ -7,6 +7,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from models.keras_ssd300_new import ssd_300_new
+from keras_loss_function.keras_ssd_loss_V1 import SSDLoss_V1
 from keras_loss_function.keras_ssd_loss import SSDLoss
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
@@ -26,8 +27,10 @@ import os
 
 def lr_schedule(epoch):
     if epoch < 80:
-        return 0.0001
+        return 0.001
     elif epoch < 100:
+        return 0.0001
+    elif epoch < 800:
         return 0.00001
     else:
         return 0.000001
@@ -38,33 +41,33 @@ img_channels = 3 # Number of color channels of the model input images
 mean_color = [123, 117, 104] # The per-channel mean of the images in the dataset. Do not change this value if you're using any of the pre-trained weights.
 swap_channels = [2, 1, 0] # The color channel order in the original SSD is BGR, so we'll have the model reverse the color channel order of the input images.
 n_classes = 20 # Number of positive classes, e.g. 20 for Pascal VOC, 80 for MS COCO
-# scales_pascal = [0.1, 0.2, 0.37, 0.54, 0.71, 0.88, 1.05] # The anchor box scaling factors used in the original SSD300 for the Pascal VOC datasets
-# scales_coco = [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05] # The anchor box scaling factors used in the original SSD300 for the MS COCO datasets
-# scales = scales_pascal
+
+# This scales are based on perspective views and image size
 scales = [0.147,0.307,0.547,0.76,0.867,0.973,1.0]
 
-# aspect_ratios = [[1.0, 2.0, 0.5],
-#                  [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-#                  [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-#                  [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-#                  [1.0, 2.0, 0.5],
-#                  [1.0, 2.0, 0.5]] # The anchor box aspect ratios used in the original SSD300; the order matters
+# We only work with square rectangle
 aspect_ratios = [[1.0],[1.0],[1.0],[1.0],[1.0],[1.0]]
 
+# We do not need
 two_boxes_for_ar1 = False
-# steps = [8, 16, 32, 64, 100, 300] # The space between two adjacent anchor box center points for each predictor layer.
+
+# Step will be calculated based on image size and feature map size
 steps= None
-offsets = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5] # The offsets of the first anchor box center points from the top and left borders of the image as a fraction of the step size for each predictor layer.
+
+# The offsets of the first anchor box center points from the top and left borders of the image as a fraction of the step size for each predictor layer.
+# cy = np.linspace(offset_height * step_height, (offset_height + feature_map_height - 1) * step_height, feature_map_height)
+# cx = np.linspace(offset_width * step_width, (offset_width + feature_map_width - 1) * step_width, feature_map_width)
+offsets = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5] 
 
 clip_boxes = True # Whether or not to clip the anchor boxes to lie entirely within the image boundaries
 variances = [0.1, 0.1, 0.1, 0.1] # The variances by which the encoded target coordinates are divided as in the original implementation
 normalize_coords = True
 
 load_opts = 0 # 0: from scratch; 1: from pretrained weigths; 2: from pretrained model
-if load_opts == 0 or load_opts == 1:
+if load_opts == 0:
     # 1: Build the Keras model.
     K.clear_session() # Clear previous models from memory.
-    model, predictor_size = ssd_300_new(image_size=(img_height, img_width, img_channels),
+    model, predictor_sizes = ssd_300_new(image_size=(img_height, img_width, img_channels),
                     n_classes=n_classes,
                     mode='training',
                     l2_regularization=0.0005,
@@ -79,30 +82,42 @@ if load_opts == 0 or load_opts == 1:
                     subtract_mean=mean_color,
                     swap_channels=swap_channels,
                     return_predictor_sizes=True)
-    print("predictor_size: {}".format(predictor_size))
+    print("predictor_sizes: {}".format(predictor_sizes))
     print(model.summary())
     
-    # 2: Load some weights into the model.
-    ############################################################################################
-    if load_opts == 1:
-        ## TODO: Set the path to the weights you want to load.
-        weights_path = 'output/ssd300_new_adam/snapshots/weights/ssd300_pascal_07+12_epoch-30_loss-14.7925_val_loss-14.6434.h5'
-        model.load_weights(weights_path, by_name=True)
-
     # 3: Instantiate an optimizer and the SSD loss function and compile the model.
     #    If you want to follow the original Caffe implementation, use the preset SGD
     #    optimizer, otherwise I'd recommend the commented-out Adam optimizer.
     adam = Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
     # sgd = SGD(lr=0.001, momentum=0.9, decay=0.0, nesterov=False)
+    
+    # if you use ssd score type:
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
-    model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
+    
+    # # if you use regression type:
+    # ssd_loss = SSDLoss_V1(neg_pos_ratio=3, alpha=1.0)
 
+    model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
+elif load_opts == 1:
+    print("Not available yet")
+    # # 2: Load some weights into the model.
+    # ############################################################################################
+    # if load_opts == 1:
+    #     ## TODO: Set the path to the weights you want to load.
+    #     weights_path = 'output/ssd300_new_adam/snapshots/weights/ssd300_pascal_07+12_epoch-30_loss-14.7925_val_loss-14.6434.h5'
+    #     model.load_weights(weights_path, by_name=True)
 elif load_opts == 2:
     ## Load a previously created model
     ## TODO: Set the path to the `.h5` file of the model to be loaded.
     model_path = 'output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-01_loss-20.8205_val_loss-16.3313.h5'
     # We need to create an SSDLoss object in order to pass that to the model loader.
+    
+    # if you use ssd score type:
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+    
+    # # if you use regression type:
+    # ssd_loss = SSDLoss_V1(neg_pos_ratio=3, alpha=1.0)
+
     K.clear_session() # Clear previous models from memory.
     model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
                                                 'L2Normalization': L2Normalization,
@@ -199,12 +214,13 @@ resize = Resize(height=img_height, width=img_width)
 
 # 5: Instantiate an encoder that can encode ground truth labels into the format needed by the SSD loss function.
 # The encoder constructor needs the spatial dimensions of the model's predictor layers to create the anchor boxes.
-predictor_sizes = [model.get_layer('pool3_mbox_conf').output_shape[1:3],
-                   model.get_layer('pool4_mbox_conf').output_shape[1:3],
-                   model.get_layer('conv5_2_mbox_conf').output_shape[1:3],
-                   model.get_layer('pool5_mbox_conf').output_shape[1:3],
-                   model.get_layer('fc7_mbox_conf').output_shape[1:3],
-                   model.get_layer('conv6_2_mbox_conf').output_shape[1:3]]
+# predictor_sizes = [model.get_layer('pool3_mbox_conf').output_shape[1:3],
+#                    model.get_layer('pool4_mbox_conf').output_shape[1:3],
+#                    model.get_layer('conv5_2_mbox_conf').output_shape[1:3],
+#                    model.get_layer('pool5_mbox_conf').output_shape[1:3],
+#                    model.get_layer('fc7_mbox_conf').output_shape[1:3],
+#                    model.get_layer('conv6_2_mbox_conf').output_shape[1:3]]
+score_type = 'ssd'
 ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     img_width=img_width,
                                     n_classes=n_classes,
@@ -217,13 +233,15 @@ ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     clip_boxes=clip_boxes,
                                     variances=variances,
                                     matching_type='multi',
-                                    pos_iou_threshold=0.7,
-                                    neg_iou_limit=0.3,
+                                    pos_iou_threshold=0.5,
+                                    neg_iou_limit=0.5,
                                     normalize_coords=normalize_coords,
                                     # new
-                                    iou_type = "to_gt",
-                                    clip_gt=True,
-                                    global_pos_iou_threshold=0.5)
+                                    score_type = score_type,
+                                    add_original_iou = True,
+                                    global_pos_iou_threshold=0.5,
+                                    clip_gt=True
+)
 
 # 6: Create the generator handles that will be passed to Keras' `fit_generator()` function.
 train_generator = train_dataset.generate(batch_size=batch_size,
@@ -249,7 +267,7 @@ print("Number of images in the validation dataset:\t{:>6}".format(val_dataset_si
 
 # Define model callbacks.
 # TODO: Set the filepath under which you want to save the model.
-model_checkpoint = ModelCheckpoint(filepath='output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
+model_checkpoint = ModelCheckpoint(filepath='output/ssd300_new_adam_'+score_type+'/snapshots/models/ssd300_pascal_07+12_epoch-{epoch:02d}_loss-{loss:.4f}_val_loss-{val_loss:.4f}.h5',
                                    monitor='val_loss',
                                    verbose=1,
                                    save_best_only=True,
@@ -257,7 +275,7 @@ model_checkpoint = ModelCheckpoint(filepath='output/ssd300_new_adam/snapshots/mo
                                    mode='auto',
                                    period=1)
 #model_checkpoint.best = 
-csv_logger = CSVLogger(filename='output/ssd300_new_adam/logs/ssd300_pascal_07+12_training_log.csv',
+csv_logger = CSVLogger(filename='output/ssd300_new_adam_'+score_type+'/logs/ssd300_pascal_07+12_training_log.csv',
                        separator=',',
                        append=True)
 learning_rate_scheduler = LearningRateScheduler(schedule=lr_schedule,
@@ -273,7 +291,7 @@ callbacks = [model_checkpoint,
 ################################################################################################
 # If you're resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch   = 0
-final_epoch     = 120
+final_epoch     = 1200
 steps_per_epoch = 1000
 
 history = model.fit_generator(generator=train_generator,

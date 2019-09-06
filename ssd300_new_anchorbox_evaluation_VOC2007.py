@@ -77,7 +77,7 @@ if load_opt == 0:
 elif load_opt ==1:
     # from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
     from keras_layers.keras_layer_DecodeDetections import DecodeDetections
-    model_path = 'output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-115_loss-2.7311_val_loss-2.8173.h5'
+    model_path = 'output/ssd300_new_adam_ssd/snapshots/models/ssd300_pascal_07+12_epoch-49_loss-4.8732_val_loss-4.9873.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
@@ -87,8 +87,8 @@ elif load_opt ==1:
                                                          'compute_loss': ssd_loss.compute_loss})
     train_output_layer = "predictions"
     predictions = train_model.get_layer(train_output_layer).output
-    decoded_predictions = DecodeDetections(confidence_thresh=0.01,
-                                               iou_threshold=0.45,
+    decoded_predictions = DecodeDetections(confidence_thresh=0.5,
+                                               iou_threshold=0.5,
                                                top_k=200,
                                                nms_max_output_size=400,
                                                coords='centroids',
@@ -162,7 +162,7 @@ mean_average_precision, average_precisions, precisions, recalls = results
 ######################
 print(average_precisions)
 print("Recall")
-print(recalls)
+# print(recalls)
 for i in range(1, len(average_precisions)):
     print("{:<14}{:<6}{}".format(classes[i], 'AP', round(average_precisions[i], 3)))
 print()
