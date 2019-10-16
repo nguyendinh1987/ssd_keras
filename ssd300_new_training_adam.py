@@ -63,28 +63,27 @@ clip_boxes = True # Whether or not to clip the anchor boxes to lie entirely with
 variances = [0.1, 0.1, 0.1, 0.1] # The variances by which the encoded target coordinates are divided as in the original implementation
 normalize_coords = True
 
-load_opts = 0 # 0: from scratch; 1: from pretrained weigths; 2: from pretrained model
-if load_opts == 0:
-    # 1: Build the Keras model.
-    K.clear_session() # Clear previous models from memory.
-    model, predictor_sizes = ssd_300_new(image_size=(img_height, img_width, img_channels),
-                    n_classes=n_classes,
-                    mode='training',
-                    l2_regularization=0.0005,
-                    scales=scales,
-                    aspect_ratios_per_layer=aspect_ratios,
-                    two_boxes_for_ar1=two_boxes_for_ar1,
-                    steps=steps,
-                    offsets=offsets,
-                    clip_boxes=clip_boxes,
-                    variances=variances,
-                    normalize_coords=normalize_coords,
-                    subtract_mean=mean_color,
-                    swap_channels=swap_channels,
-                    return_predictor_sizes=True)
-    print("predictor_sizes: {}".format(predictor_sizes))
-    print(model.summary())
-    
+load_opts = 2 # 0: from scratch; 1: from pretrained weigths; 2: from pretrained model
+# 1: Build the Keras model.
+K.clear_session() # Clear previous models from memory.
+model, predictor_sizes = ssd_300_new(image_size=(img_height, img_width, img_channels),
+                n_classes=n_classes,
+                mode='training',
+                l2_regularization=0.0005,
+                scales=scales,
+                aspect_ratios_per_layer=aspect_ratios,
+                two_boxes_for_ar1=two_boxes_for_ar1,
+                steps=steps,
+                offsets=offsets,
+                clip_boxes=clip_boxes,
+                variances=variances,
+                normalize_coords=normalize_coords,
+                subtract_mean=mean_color,
+                swap_channels=swap_channels,
+                return_predictor_sizes=True)
+print("predictor_sizes: {}".format(predictor_sizes))
+print(model.summary())
+if load_opts == 0:   
     # 3: Instantiate an optimizer and the SSD loss function and compile the model.
     #    If you want to follow the original Caffe implementation, use the preset SGD
     #    optimizer, otherwise I'd recommend the commented-out Adam optimizer.
@@ -109,12 +108,11 @@ elif load_opts == 1:
 elif load_opts == 2:
     ## Load a previously created model
     ## TODO: Set the path to the `.h5` file of the model to be loaded.
-    model_path = 'output/ssd300_new_adam/snapshots/models/ssd300_pascal_07+12_epoch-01_loss-20.8205_val_loss-16.3313.h5'
-    # We need to create an SSDLoss object in order to pass that to the model loader.
+    model_path = 'output/ssd300_new_adam_ssd/snapshots/models/ssd300_pascal_07+12_epoch-49_loss-4.8732_val_loss-4.9873.h5'
     
+    # We need to create an SSDLoss object in order to pass that to the model loader.
     # if you use ssd score type:
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
-    
     # # if you use regression type:
     # ssd_loss = SSDLoss_V1(neg_pos_ratio=3, alpha=1.0)
 
@@ -215,11 +213,11 @@ resize = Resize(height=img_height, width=img_width)
 # 5: Instantiate an encoder that can encode ground truth labels into the format needed by the SSD loss function.
 # The encoder constructor needs the spatial dimensions of the model's predictor layers to create the anchor boxes.
 # predictor_sizes = [model.get_layer('pool3_mbox_conf').output_shape[1:3],
-#                    model.get_layer('pool4_mbox_conf').output_shape[1:3],
-#                    model.get_layer('conv5_2_mbox_conf').output_shape[1:3],
-#                    model.get_layer('pool5_mbox_conf').output_shape[1:3],
-#                    model.get_layer('fc7_mbox_conf').output_shape[1:3],
-#                    model.get_layer('conv6_2_mbox_conf').output_shape[1:3]]
+#                 model.get_layer('pool4_mbox_conf').output_shape[1:3],
+#                 model.get_layer('conv5_2_mbox_conf').output_shape[1:3],
+#                 model.get_layer('pool5_mbox_conf').output_shape[1:3],
+#                 model.get_layer('fc7_mbox_conf').output_shape[1:3],
+#                 model.get_layer('conv6_2_mbox_conf').output_shape[1:3]]
 score_type = 'ssd'
 ssd_input_encoder = SSDInputEncoder_V1(img_height=img_height,
                                     img_width=img_width,
@@ -290,7 +288,7 @@ callbacks = [model_checkpoint,
 ##  Train
 ################################################################################################
 # If you're resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
-initial_epoch   = 0
+initial_epoch   = 49
 final_epoch     = 1200
 steps_per_epoch = 1000
 

@@ -74,10 +74,10 @@ if load_opt == 0:
     # model.compile(optimizer=adam, loss=ssd_loss.compute_loss)
     # model.summary()
     # # sys.exit()
-elif load_opt ==1:
+elif load_opt == 1:
     # from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
     from keras_layers.keras_layer_DecodeDetections import DecodeDetections
-    model_path = 'output/ssd300_new_adam_ssd/snapshots/models/ssd300_pascal_07+12_epoch-49_loss-4.8732_val_loss-4.9873.h5'
+    model_path = 'output/ssd300_new_adam_ssd/snapshots/models/ssd300_pascal_07+12_epoch-493_loss-3.9967_val_loss-4.1464.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)

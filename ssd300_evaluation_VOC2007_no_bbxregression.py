@@ -62,7 +62,7 @@ if load_opt == 0:
     # sys.exit()
 elif load_opt ==1:
     # from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
-    from keras_layers.keras_layer_DecodeDetections import DecodeDetections
+    from keras_layers.keras_layer_DecodeDetections_no_regression import DecodeDetections_no_regresion
     # model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-471_loss-4.4735_val_loss-4.1848.h5'
     model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-45_loss-4.5811_val_loss-4.4089.h5'
     
@@ -74,7 +74,7 @@ elif load_opt ==1:
                                                          'compute_loss': ssd_loss.compute_loss})
     train_output_layer = "predictions"
     predictions = train_model.get_layer(train_output_layer).output
-    decoded_predictions = DecodeDetections(confidence_thresh=0.5,
+    decoded_predictions = DecodeDetections_no_regresion(confidence_thresh=0.5,
                                            iou_threshold=0.5,
                                            top_k=200,
                                            nms_max_output_size=400,

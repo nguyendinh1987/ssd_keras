@@ -25,12 +25,12 @@ from data_generator.object_detection_2d_misc_utils import apply_inverse_transfor
 import os
 
 def lr_schedule(epoch):
-    if epoch < 80:
-        return 0.001
-    elif epoch < 100:
+    if epoch < 40000:
         return 0.0001
-    elif epoch < 800:
+    elif epoch < 50000:
         return 0.00001
+    elif epoch < 60000:
+        return 0.000001
     else:
         return 0.000001
 
@@ -97,7 +97,7 @@ elif load_opts == 1: # load weight
     # model.load_weights(weights_path, by_name=True)
 elif load_opts == 2: # Load a previously created model
     ## TODO: Set the path to the `.h5` file of the model to be loaded.
-    model_path = ''
+    model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-425_loss-4.4928_val_loss-4.2008.h5'
     assert len(model_path) > 0, "model_path is not available"
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
@@ -267,7 +267,7 @@ callbacks = [model_checkpoint,
 ################################################################################################
 # If you're resuming a previous training, set `initial_epoch` and `final_epoch` accordingly.
 initial_epoch   = 0
-final_epoch     = 1200
+final_epoch     = 100000
 steps_per_epoch = 1000
 
 history = model.fit_generator(generator=train_generator,
