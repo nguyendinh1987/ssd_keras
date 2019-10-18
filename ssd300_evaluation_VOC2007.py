@@ -64,7 +64,7 @@ elif load_opt ==1:
     # from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
     from keras_layers.keras_layer_DecodeDetections import DecodeDetections
     # model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-471_loss-4.4735_val_loss-4.1848.h5'
-    model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-45_loss-4.5811_val_loss-4.4089.h5'
+    model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-134_loss-4.0006_val_loss-3.9844.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)

@@ -19,6 +19,51 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 
+def match_bipartite_greedy_pview(weight_matrix_1, weight_matrix_2, pos_threshold=0):
+    '''
+    - The weight_matrix_1 is offical IoU between two lists of boxes.
+    - The weight_matrix_2 is variant IoU between two lists of boxes. It stands 
+      a case of pview cover gt bounding box
+    - This function is to deal with a case that there are a groundtruth box are 
+    covered by many anchor boxes. It will try to select the smallest anchor box.
+    -------------------
+    - The output is list of anchorboxes that cover gt and have largest IoU to gt
+      and their IoU > pos_thrshold (in default, pos_threshold = 0). The order fo-
+      -llow gt order. Gt that do not have suitable anchor boxes will be marked as
+      [-1].
+    '''
+    weight_matrix = np.copy(weight_matrix_1) # We'll modify this array.
+    num_ground_truth_boxes = weight_matrix.shape[0]
+    all_gt_indices = list(range(num_ground_truth_boxes)) # Only relevant for fancy-indexing below.
+
+    # This 1D array will contain for each ground truth box the index of
+    # the matched anchor box.
+    matches = np.zeros(num_ground_truth_boxes, dtype=np.int) 
+
+    # clean IoU < pos_threshold
+    print(weight_matrix)
+    weight_matrix[np.where(weight_matrix <= pos_threshold)] = 0
+    print("after")
+    print(weight_matrix)
+    # Find gt_indices and anchor_indices point to pairs that anchor box covers gt box
+    gt_indices, anchor_indices = np.where(weight_matrix_2==1)
+    overlaps = weight_matrix[gt_indices,anchor_indices]
+    for cur_gt_index in range(num_ground_truth_boxes):
+        sl_indices = np.where(gt_indices == cur_gt_index)[0]
+        if len(sl_indices) == 0:
+            matches[cur_gt_index] = -1
+        else:
+            overlaps_p_gt = overlaps[sl_indices]
+
+            if np.max(overlaps_p_gt) == 0:
+                matches[cur_gt_index] = -1
+            else:
+                idx= np.argmax(overlaps_p_gt)
+                matches[cur_gt_index] = anchor_indices[sl_indices[idx]]
+
+    return matches
+
+
 def match_bipartite_greedy_V1(weight_matrix_1, weight_matrix_2):
     '''
     - The weight_matrix_1 is variant IoU between two lists of boxes. It repsects to 
