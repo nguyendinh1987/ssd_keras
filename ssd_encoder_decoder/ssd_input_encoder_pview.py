@@ -376,6 +376,7 @@ class SSDInputEncoder:
             # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
             similarities[:, bipartite_matches] = 0
             ############## Question: what should we do with pview covers a part of gt
+            ############## Answer:   anchor boxes will be scored by iou_per_gt --> loss function should be the same with regression
 
             # Second: Maybe do 'multi' matching, where each remaining anchor box will be matched to its most similar
             #         ground truth box with an IoU of at least `pos_iou_threshold`, or not matched if there is no
@@ -385,6 +386,9 @@ class SSDInputEncoder:
 
                 # Get all matches that satisfy the IoU threshold.
                 matches = match_multi(weight_matrix=similarities, threshold=self.pos_iou_threshold)
+
+                # Create labels_gt_score from labels_one_hot and IoU_per_gt
+
 
                 # Write the ground truth data to the matched anchor boxes.
                 ########################################################################################

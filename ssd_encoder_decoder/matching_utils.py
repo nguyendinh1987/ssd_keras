@@ -174,7 +174,7 @@ def match_bipartite_greedy(weight_matrix):
 
 def match_multi_V1(weight_matrix_1, weight_matrix_2, threshold):
     '''
-    Give my explaination here
+    Give my explaination for match_multi_V1 here
     '''
     num_anchor_boxes = weight_matrix_1.shape[1]
     all_anchor_indices = list(range(num_anchor_boxes)) # Only relevant for fancy-indexing below.    
@@ -240,3 +240,26 @@ def match_multi(weight_matrix, threshold):
     gt_indices_thresh_met = ground_truth_indices[anchor_indices_thresh_met]
 
     return gt_indices_thresh_met, anchor_indices_thresh_met
+
+def one_hot_substitution_pview(label_one_hot,matches,weight_matrix):
+    '''
+    This function is to replace values 1 in label_one_hot by corresponding Iou score in weight_matrix.
+    Value 1 will be replaced by 0 if that its gt index is not listed in matches[0]
+    --------
+    label_one_hot: row is a list of gt boxes, column is class and column at corresponding class will be set 1.
+    matches: matches[0] --> gt indices
+             matches[1] --> anchor indices
+    weight_matrix: 
+    '''
+    gt_indices = matches[0]
+    anchor_indices = matches[1]
+
+    label_by_iou = label_one_hot[gt_indices] # each row respects to gt matching with anchor_idx listed in matches[1]
+    class_ids = np.where(label_by_iou == 1)[1]
+
+    label_by_iou[anchor_indices,class_ids] = weight_matrix[gt_indices,anchor_indices]
+
+    return label_by_iou
+            
+
+
