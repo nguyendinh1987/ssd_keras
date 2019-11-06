@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.path.abspath('../../'))
 from keras.optimizers import Adam, SGD
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler, TerminateOnNaN, CSVLogger
 from keras import backend as K
@@ -13,7 +16,7 @@ from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
 from keras_layers.keras_layer_L2Normalization import L2Normalization
 
-from ssd_encoder_decoder.ssd_input_encoder import SSDInputEncoder
+from ssd_encoder_decoder.ssd_input_encoder_pview import SSDInputEncoder_Pview
 from ssd_encoder_decoder.ssd_output_decoder import decode_detections, decode_detections_fast
 
 from data_generator.object_detection_2d_data_generator import DataGenerator
@@ -42,7 +45,7 @@ swap_channels = [2, 1, 0] # The color channel order in the original SSD is BGR, 
 n_classes = 20 # Number of positive classes, e.g. 20 for Pascal VOC, 80 for MS COCO
 
 # it is calculated by pview/imgsize
-scales = [0.147,0.28,0.567,0.78,1,1]
+scales = [0.147,0.28,0.567,0.78,1,1.2]
 
 # We only work with square rectangle
 aspect_ratios = [[1.0],[1.0],[1.0],[1.0],[1.0]]
@@ -53,8 +56,9 @@ aspect_ratios = [[1.0],[1.0],[1.0],[1.0],[1.0]]
 #                  [1.0, 2.0, 0.5],
 #                  [1.0, 2.0, 0.5]] # The anchor box aspect ratios used in the original SSD300; the order matters
 two_boxes_for_ar1 = False 
-steps = None
-offsets = [0.5, 0.5, 0.5, 0.5, 0.5] # The offsets of the first anchor box center points from the top and left borders of the image as a fraction of the step size for each predictor layer.
+steps = [8,16,16,32,32]
+# offsets = [0.5, 0.5, 0.5, 0.5, 0.5] # The offsets of the first anchor box center points from the top and left borders of the image as a fraction of the step size for each predictor layer.
+offsets = [3.5, 7.5,23.5, 55.5,119.5]
 clip_boxes = False # Whether or not to clip the anchor boxes to lie entirely within the image boundaries
 variances = [0.1, 0.1, 0.2, 0.2] # The variances by which the encoded target coordinates are divided as in the original implementation
 normalize_coords = True
@@ -100,7 +104,7 @@ elif load_opts == 2: # Load a previously created model
     model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-425_loss-4.4928_val_loss-4.2008.h5'
     assert len(model_path) > 0, "model_path is not available"
     # We need to create an SSDLoss object in order to pass that to the model loader.
-    ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+    ssd_loss = SSDLoss_Pview(neg_pos_ratio=3, alpha=1.0)
     K.clear_session() # Clear previous models from memory.
     model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
                                                 'L2Normalization': L2Normalization,
@@ -120,23 +124,23 @@ val_dataset = DataGenerator(load_images_into_memory=False, hdf5_dataset_path=Non
 # 2: Parse the image and label lists for the training and validation datasets. This can take a while.
 # TODO: Set the paths to the datasets here.
 # The directories that contain the images.
-VOC_2007_images_dir      = '../../Data/VOC/VOCdevkit_trainval/VOC2007/JPEGImages/'
-VOC_2012_images_dir      = '../../Data/VOC/VOCdevkit_trainval/VOC2012/JPEGImages/'
-VOC_2007_test_images_dir = '../../Data/VOC/VOCdevkit_test/VOC2007/JPEGImages'
+VOC_2007_images_dir      = '../../../../Data/VOC/VOCdevkit_trainval/VOC2007/JPEGImages/'
+VOC_2012_images_dir      = '../../../../Data/VOC/VOCdevkit_trainval/VOC2012/JPEGImages/'
+VOC_2007_test_images_dir = '../../../../Data/VOC/VOCdevkit_test/VOC2007/JPEGImages'
 
 # The directories that contain the annotations.
-VOC_2007_annotations_dir      = '../../Data/VOC/VOCdevkit_trainval/VOC2007/Annotations/'
-VOC_2012_annotations_dir      = '../../Data/VOC/VOCdevkit_trainval/VOC2012/Annotations/'
-VOC_2007_test_annotations_dir = '../../Data/VOC/VOCdevkit_test/VOC2007/Annotations'
+VOC_2007_annotations_dir      = '../../../../Data/VOC/VOCdevkit_trainval/VOC2007/Annotations/'
+VOC_2012_annotations_dir      = '../../../../Data/VOC/VOCdevkit_trainval/VOC2012/Annotations/'
+VOC_2007_test_annotations_dir = '../../../../Data/VOC/VOCdevkit_test/VOC2007/Annotations'
 
 # The paths to the image sets.
-VOC_2007_train_image_set_filename    = '../../Data/VOC/VOCdevkit_trainval/VOC2007/ImageSets/Main/train.txt'
-VOC_2012_train_image_set_filename    = '../../Data/VOC/VOCdevkit_trainval/VOC2012/ImageSets/Main/train.txt'
-VOC_2007_val_image_set_filename      = '../../Data/VOC/VOCdevkit_trainval/VOC2007/ImageSets/Main/val.txt'
-VOC_2012_val_image_set_filename      = '../../Data/VOC/VOCdevkit_trainval/VOC2012/ImageSets/Main/val.txt'
-VOC_2007_trainval_image_set_filename = '../../Data/VOC/VOCdevkit_trainval/VOC2007/ImageSets/Main/trainval.txt'
-VOC_2012_trainval_image_set_filename = '../../Data/VOC/VOCdevkit_trainval/VOC2012/ImageSets/Main/trainval.txt'
-VOC_2007_test_image_set_filename     = '../../Data/VOC/VOCdevkit_test/VOC2007/ImageSets/Main/test.txt'
+VOC_2007_train_image_set_filename    = '../../../../Data/VOC/VOCdevkit_trainval/VOC2007/ImageSets/Main/train.txt'
+VOC_2012_train_image_set_filename    = '../../../../Data/VOC/VOCdevkit_trainval/VOC2012/ImageSets/Main/train.txt'
+VOC_2007_val_image_set_filename      = '../../../../Data/VOC/VOCdevkit_trainval/VOC2007/ImageSets/Main/val.txt'
+VOC_2012_val_image_set_filename      = '../../../../Data/VOC/VOCdevkit_trainval/VOC2012/ImageSets/Main/val.txt'
+VOC_2007_trainval_image_set_filename = '../../../../Data/VOC/VOCdevkit_trainval/VOC2007/ImageSets/Main/trainval.txt'
+VOC_2012_trainval_image_set_filename = '../../../../Data/VOC/VOCdevkit_trainval/VOC2012/ImageSets/Main/trainval.txt'
+VOC_2007_test_image_set_filename     = '../../../../Data/VOC/VOCdevkit_test/VOC2007/ImageSets/Main/test.txt'
 # The XML parser needs to now what object class names to look for and in which order to map them to integers.
 classes = ['background',
            'aeroplane', 'bicycle', 'bird', 'boat',
@@ -170,13 +174,13 @@ val_dataset.parse_xml(images_dirs=[VOC_2007_test_images_dir],
 # speed up the training. Doing this is not relevant in case you activated the `load_images_into_memory`
 # option in the constructor, because in that cas the images are in memory already anyway. If you don't
 # want to create HDF5 datasets, comment out the subsequent two function calls.
-if not os.path.isfile('dataset_pascal_voc_07+12_trainval.h5'):
-    train_dataset.create_hdf5_dataset(file_path='dataset_pascal_voc_07+12_trainval.h5',
+if not os.path.isfile('../../data_h5/dataset_pascal_voc_07+12_trainval.h5'):
+    train_dataset.create_hdf5_dataset(file_path='../../data_h5/dataset_pascal_voc_07+12_trainval.h5',
                                     resize=False,
                                     variable_image_size=True,
                                     verbose=True)
-if not os.path.isfile('dataset_pascal_voc_07_test.h5'):
-    val_dataset.create_hdf5_dataset(file_path='dataset_pascal_voc_07_test.h5',
+if not os.path.isfile('../../data_h5/dataset_pascal_voc_07_test.h5'):
+    val_dataset.create_hdf5_dataset(file_path='../../data_h5/dataset_pascal_voc_07_test.h5',
                                     resize=False,
                                     variable_image_size=True,
                                     verbose=True)
@@ -203,7 +207,7 @@ predictor_sizes = [model.get_layer('conf_conv4_3').output_shape[1:3],
                    model.get_layer('conf_conv6_1').output_shape[1:3],
                    model.get_layer('conf_conv7_2').output_shape[1:3],
                    model.get_layer('conf_conv9_2').output_shape[1:3]]
-ssd_input_encoder = SSDInputEncoder(img_height=img_height,
+ssd_input_encoder = SSDInputEncoder_Pview(img_height=img_height,
                                     img_width=img_width,
                                     n_classes=n_classes,
                                     predictor_sizes=predictor_sizes,
@@ -215,9 +219,10 @@ ssd_input_encoder = SSDInputEncoder(img_height=img_height,
                                     clip_boxes=clip_boxes,
                                     variances=variances,
                                     matching_type='multi',
-                                    pos_iou_threshold=0.95, # Consider only anchorbox cover almost gt
-                                    neg_iou_limit=0.5,
-                                    normalize_coords=normalize_coords)
+                                    pos_iou_threshold=0.5, # Consider only anchorbox cover almost gt
+                                    neg_iou_limit=0.4,
+                                    normalize_coords=normalize_coords,
+                                    clip_gt = True)
 
 # 6: Create the generator handles that will be passed to Keras' `fit_generator()` function.
 train_generator = train_dataset.generate(batch_size=batch_size,

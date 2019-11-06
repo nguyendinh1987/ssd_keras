@@ -19,10 +19,10 @@ limitations under the License.
 from __future__ import division
 import numpy as np
 
-from bounding_box_utils.bounding_box_utils import iou_V1, convert_coordinates
-from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_bipartite_greedy_pview, match_multi, clip_boxes
+from bounding_box_utils.bounding_box_utils import iou, convert_coordinates
+from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_multi
 
-class SSDInputEncoder_Pview:
+class SSDInputEncoder:
     '''
     Transforms ground truth labels for object detection in images
     (2D bounding box coordinates and class labels) to the format required for
@@ -54,10 +54,7 @@ class SSDInputEncoder_Pview:
                  border_pixels='half',
                  coords='centroids',
                  normalize_coords=True,
-                 background_id=0,
-                 # Dinh
-                 clip_gt = True,
-                 pos_threshold = 0.2):
+                 background_id=0):
         '''
         Arguments:
             img_height (int): The height of the input images.
@@ -226,8 +223,7 @@ class SSDInputEncoder_Pview:
         self.coords = coords
         self.normalize_coords = normalize_coords
         self.background_id = background_id
-        self.clip_gt = clip_gt
-        self.pos_threshold = pos_threshold
+
         # Compute the number of boxes per spatial location for each predictor layer.
         # For example, if a predictor layer has three different aspect ratios, [1.0, 0.5, 2.0], and is
         # supposed to predict two boxes of slightly different size for aspect ratio 1.0, then that predictor
@@ -355,44 +351,30 @@ class SSDInputEncoder_Pview:
 
             # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
             # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
-            similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
-            gt_covered_percentage = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="to_box1")                                
-            
-            if False:
-                # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
-                #        This ensures that each ground truth box will have at least one good match.
-                # For each ground truth box, get the anchor box to match with it.
-                ############################################################################################
-                #####----> I should modify: Find anchorboxes that cover groundtruth boxes<-----#############
-                ##### The target is to constraint regressed boundingboxes excess feature zone  #############
-                ##### The anchorboxes is positive if it cover gt and its similarities >        #############
-                #####  positive_threshold                                                      #############
-                ############################################################################################            
-                bipartite_matches = match_bipartite_greedy_pview(weight_matrix_1=similarities,weight_matrix_2=gt_covered_percentage,pos_threshold=self.pos_threshold)
-                # print("___Dinh___: bipartite_matches")
-                # print(bipartite_matches)
-                # print("_____________________________")
-                ############################################################################################
-                #### Clean labels_one_hot where it does not have corresponding gt                       ####
-                ############################################################################################
-                need_clean_indices = np.where(bipartite_matches == -1)
-                labels_one_hot_cleaned = np.delete(labels_one_hot,need_clean_indices,0)
-                bipartite_matches = np.delete(bipartite_matches,need_clean_indices,0)
-                y_encoded[i, bipartite_matches, :-8] = labels_one_hot_cleaned
-            else:
-                bipartite_matches = match_bipartite_greedy(weight_matrix=similarities)
-                y_encoded[i, bipartite_matches, :-8] = labels_one_hot
+            similarities = iou(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
 
-            # print("___Dinh___: labels_one_hot")
-            # print(labels_one_hot)
-            # print("_____________________________")
-            # print("___Dinh___: labels_one_hot_cleaned")
-            # print(labels_one_hot_cleaned)
-            # print("_____________________________")
+            # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
+            #        This ensures that each ground truth box will have at least one good match.
+
+            # For each ground truth box, get the anchor box to match with it.
+            ############################################################################################
+            #####----> I should modify: Find anchorboxes that cover groundtruth boxes<-----#############
+            ##### The target is to constraint regressed boundingboxes excess feature zone  #############
+            ##### Q?: How to deal with anchorboxes that overlap with gtbox?                #############
+            ##### A: anchorboxes will be regressed to path of gtboxes belong to anchorboxes#############
+            #####    and score = iou or P(obj)*IoU as Yolo                                 #############
+            ############################################################################################            
+            bipartite_matches = match_bipartite_greedy(weight_matrix=similarities)
+
+            # Write the ground truth data to the matched anchor boxes.
+            # Overwrite anchorboxes that are the best match with groundtruth by labels_one_hot
+            ############################################################################################
+            #####----> I should modify: overwrite anchorboxes that cover groundtruth boxes<-----########
+            ############################################################################################
+            y_encoded[i, bipartite_matches, :-8] = labels_one_hot
+
             # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
             similarities[:, bipartite_matches] = 0
-            ############## Question: what should we do with pview covers a part of gt
-            ############## Answer:   anchor boxes will be scored by iou_per_gt --> loss function should be the same with regression
 
             # Second: Maybe do 'multi' matching, where each remaining anchor box will be matched to its most similar
             #         ground truth box with an IoU of at least `pos_iou_threshold`, or not matched if there is no
@@ -402,12 +384,6 @@ class SSDInputEncoder_Pview:
 
                 # Get all matches that satisfy the IoU threshold.
                 matches = match_multi(weight_matrix=similarities, threshold=self.pos_iou_threshold)
-
-                # ####### Dinh: Using labels scores
-                # # Create labels_gt_score from labels_one_hot and IoU_per_gt
-                # labels_scores = labels_one_hot[matches[0]]
-                # one_hot_indices = np.where(labels_scores[:,:self.n_classes]==1)
-                # labels_scores[one_hot_indices[0],one_hot_indices[1]] = gt_covered_percentage[matches[0],matches[1]]
 
                 # Write the ground truth data to the matched anchor boxes.
                 ########################################################################################
@@ -426,36 +402,6 @@ class SSDInputEncoder_Pview:
             neutral_boxes = np.nonzero(max_background_similarities >= self.neg_iou_limit)[0]
             y_encoded[i, neutral_boxes, self.background_id] = 0
 
-        ##################################################################################
-        # Clip gt boxes
-        ##################################################################################
-        if self.clip_gt:
-            # GT boxes and anchor boxes index in y_encoded
-            # n_classes+1;[gt_coordinate(4)][anchor_coordinate(4)][variance(4)]
-            if self.coords == 'centroids':
-                # gt and anchor coordinate: cx,cy,w,h
-                gt_minmax = convert_coordinates(y_encoded[:,:,-12:-8],start_index=0,conversion='centroids2minmax',border_pixels=self.border_pixels)
-                anchor_minmax = convert_coordinates(y_encoded[:,:,-8:-4],start_index=0,conversion='centroids2minmax',border_pixels=self.border_pixels)
-            elif self.coords == 'corners':
-                # gt and anchor coordinate: xmin,ymin,xmax,ymax
-                gt_minmax = convert_coordinates(y_encoded[:,:,-12:-8],start_index=0,conversion='corners2minmax',border_pixels=self.border_pixels)
-                anchor_minmax = convert_coordinates(y_encoded[:,:,-8:-4],start_index=0,conversion='corners2minmax',border_pixels=self.border_pixels)
-            if self.coords == 'minmax':
-                gt_minmax = np.copy(y_encoded[:,:,-12:-8])
-                anchor_minmax = np.copy(y_encoded[:,:,-8:-4])
-            
-            for i in range(batch_size):
-                gt_minmax[i,:,:] = clip_boxes(gt_minmax[i,:,:],anchor_minmax[i,:,:])
-            
-           #
-            if self.coords == 'centroids':
-                gt = convert_coordinates(gt_minmax,start_index=0,conversion='minmax2centroids',border_pixels=self.border_pixels)
-            elif self.coords == 'corners':
-                gt = convert_coordinates(gt_minmax,start_index=0,conversion='minmax2corners',border_pixels=self.border_pixels)
-            elif self.coords == 'minmax':
-                gt = np.copy(gt_minmax)
-
-            y_encoded[:,:,-12:-8] = gt        
         ##################################################################################
         # Convert box coordinates to anchor box offsets.
         # ---> Need to program my converting algorithm
@@ -494,7 +440,6 @@ class SSDInputEncoder_Pview:
                                         this_offsets=None,
                                         diagnostics=False):
         '''
-        Noted that: this function need to be similar with AnchorBoxes layer
         Computes an array of the spatial positions and sizes of the anchor boxes for one predictor layer
         of size `feature_map_size == [feature_map_height, feature_map_width]`.
 
@@ -569,10 +514,8 @@ class SSDInputEncoder_Pview:
                 offset_height = this_offsets
                 offset_width = this_offsets
         # Now that we have the offsets and step sizes, compute the grid of anchor box center points.
-        # cy = np.linspace(offset_height * step_height, (offset_height + feature_map_size[0] - 1) * step_height, feature_map_size[0])
-        # cx = np.linspace(offset_width * step_width, (offset_width + feature_map_size[1] - 1) * step_width, feature_map_size[1])
-        cy = offset_height + np.array(range(feature_map_size[0]))*step_height
-        cx = offset_width +  np.array(range(feature_map_size[1]))*step_width
+        cy = np.linspace(offset_height * step_height, (offset_height + feature_map_size[0] - 1) * step_height, feature_map_size[0])
+        cx = np.linspace(offset_width * step_width, (offset_width + feature_map_size[1] - 1) * step_width, feature_map_size[1])
         cx_grid, cy_grid = np.meshgrid(cx, cy)
         cx_grid = np.expand_dims(cx_grid, -1) # This is necessary for np.tile() to do what we want further down
         cy_grid = np.expand_dims(cy_grid, -1) # This is necessary for np.tile() to do what we want further down

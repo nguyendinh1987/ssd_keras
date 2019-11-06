@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.path.abspath('../../'))
 from keras import backend as K
 from keras.models import load_model,Model
 from keras.optimizers import Adam
@@ -6,9 +9,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 import sys
 
-from models.keras_ssd300 import ssd_300
+from models.keras_ssd300_pview import ssd_300_pview
 from keras_loss_function.keras_ssd_loss import SSDLoss
-from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
+from keras_layers.keras_layer_AnchorBoxes_pview import AnchorBoxes_Pview
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
 from keras_layers.keras_layer_L2Normalization import L2Normalization
@@ -25,20 +28,15 @@ load_opt = 1 # 0: load weight ; 1: load model
 if load_opt == 0:
     # 1: Build the Keras model
     K.clear_session() # Clear previous models from memory.
-    model = ssd_300(image_size=(img_height, img_width, 3),
+    model = ssd_300_pview(image_size=(img_height, img_width, 3),
                     n_classes=n_classes,
                     mode=model_mode,
                     l2_regularization=0.0005,
-                    scales=[0.1, 0.2, 0.37, 0.54, 0.71, 0.88, 1.05], # The scales for MS COCO [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
-                    aspect_ratios_per_layer=[[1.0, 2.0, 0.5],
-                                             [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                                             [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                                             [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                                             [1.0, 2.0, 0.5],
-                                             [1.0, 2.0, 0.5]],
-                    two_boxes_for_ar1=True,
-                    steps=[8, 16, 32, 64, 100, 300],
-                    offsets=[0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+                    scales=[0.147,0.28,0.567,0.78,1,1], # The scales for MS COCO [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
+                    aspect_ratios_per_layer=[[1.0],[1.0],[1.0],[1.0],[1.0]],
+                    two_boxes_for_ar1=False,
+                    steps=None,
+                    offsets=None,
                     clip_boxes=False,
                     variances=[0.1, 0.1, 0.2, 0.2],
                     normalize_coords=True,
@@ -51,7 +49,7 @@ if load_opt == 0:
 
     # 2: Load the trained weights into the model.
     # TODO: Set the path of the trained weights.
-    weights_path = 'output/ssd300/snapshots/weights/ssd300_pascal_07+12_epoch-180_loss-4.6135_val_loss-4.3133.h5'
+    weights_path = ''
     model.load_weights(weights_path, by_name=True)
 
     # 3: Compile the model so that Keras won't complain the next time you load it.
@@ -64,18 +62,18 @@ elif load_opt ==1:
     # from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
     from keras_layers.keras_layer_DecodeDetections import DecodeDetections
     # model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-471_loss-4.4735_val_loss-4.1848.h5'
-    model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-506_loss-3.6811_val_loss-3.8931.h5'
+    model_path = 'output/ssd300_pview_adam/snapshots/models/ssd300_pascal_07+12_epoch-38_loss-13.3179_val_loss-13.2149.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
     ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
     K.clear_session() # Clear previous models from memory.
-    train_model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
+    train_model = load_model(model_path, custom_objects={'AnchorBoxes_Pview': AnchorBoxes_Pview,
                                                          'L2Normalization': L2Normalization,
                                                          'compute_loss': ssd_loss.compute_loss})
     train_output_layer = "predictions"
     predictions = train_model.get_layer(train_output_layer).output
     decoded_predictions = DecodeDetections(confidence_thresh=0.5,
-                                           iou_threshold=0.5,
+                                           iou_threshold=0.2,
                                            top_k=200,
                                            nms_max_output_size=400,
                                            coords='centroids',
@@ -95,9 +93,9 @@ else:
 dataset = DataGenerator()
 
 # TODO: Set the paths to the dataset here.
-Pascal_VOC_dataset_images_dir = '../../Data/VOC/VOCdevkit_test/VOC2007/JPEGImages/'
-Pascal_VOC_dataset_annotations_dir = '../../Data/VOC/VOCdevkit_test/VOC2007/Annotations/'
-Pascal_VOC_dataset_image_set_filename = '../../Data/VOC/VOCdevkit_test/VOC2007/ImageSets/Main/test.txt'
+Pascal_VOC_dataset_images_dir = '../../../../Data/VOC/VOCdevkit_test/VOC2007/JPEGImages/'
+Pascal_VOC_dataset_annotations_dir = '../../../../Data/VOC/VOCdevkit_test/VOC2007/Annotations/'
+Pascal_VOC_dataset_image_set_filename = '../../../../Data/VOC/VOCdevkit_test/VOC2007/ImageSets/Main/test.txt'
 
 # The XML parser needs to now what object class names to look for and in which order to map them to integers.
 classes = ['background',

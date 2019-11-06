@@ -20,9 +20,11 @@ from __future__ import division
 import numpy as np
 
 from bounding_box_utils.bounding_box_utils import iou_V1, convert_coordinates
-from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_bipartite_greedy_pview, match_multi, clip_boxes
+from ssd_encoder_decoder.matching_utils import match_bipartite_greedy,match_bipartite_greedy_V1, match_multi, match_multi_V1
 
-class SSDInputEncoder_Pview:
+debugging = False
+
+class SSDInputEncoder_V1:
     '''
     Transforms ground truth labels for object detection in images
     (2D bounding box coordinates and class labels) to the format required for
@@ -47,17 +49,19 @@ class SSDInputEncoder_Pview:
                  steps=None,
                  offsets=None,
                  clip_boxes=False,
+                 clip_gt=True,
                  variances=[0.1, 0.1, 0.2, 0.2],
                  matching_type='multi',
                  pos_iou_threshold=0.5,
+                 global_pos_iou_threshold=0.3,
                  neg_iou_limit=0.3,
                  border_pixels='half',
                  coords='centroids',
+                 score_type = 'ssd',
+                 add_original_iou = True,
                  normalize_coords=True,
                  background_id=0,
-                 # Dinh
-                 clip_gt = True,
-                 pos_threshold = 0.2):
+                 encoded_anchors=True):
         '''
         Arguments:
             img_height (int): The height of the input images.
@@ -173,14 +177,20 @@ class SSDInputEncoder_Pview:
         if np.any(variances <= 0):
             raise ValueError("All variances must be >0, but the variances given are {}".format(variances))
 
-        if not (coords == 'minmax' or coords == 'centroids' or coords == 'corners'):
+        if not (coords == 'minmax' or coords == 'centroids' or coords == 'corners' or coords == 'original'):
             raise ValueError("Unexpected value for `coords`. Supported values are 'minmax', 'corners' and 'centroids'.")
+
+        if not (score_type == 'ssd' or score_type == 'iou_to_anchor' or score_type == "iou_to_gt" or score_type == "iou"):
+            raise ValueError("Unexpected value for 'score_type'. Supported values are 'traditional', 'iou_to_anchor', 'iou_to_gt' and 'iou'.")
 
         if (not (steps is None)) and (len(steps) != predictor_sizes.shape[0]):
             raise ValueError("You must provide at least one step value per predictor layer.")
 
         if (not (offsets is None)) and (len(offsets) != predictor_sizes.shape[0]):
             raise ValueError("You must provide at least one offset value per predictor layer.")
+        
+        if pos_iou_threshold < global_pos_iou_threshold:
+            raise ValueError("global_pos_iou_threshlod should be less than or equal to pos_iou_threshold.")
 
         ##################################################################################
         # Set or compute members.
@@ -221,13 +231,16 @@ class SSDInputEncoder_Pview:
         self.variances = variances
         self.matching_type = matching_type
         self.pos_iou_threshold = pos_iou_threshold
+        self.global_pos_iou_threshold = global_pos_iou_threshold
         self.neg_iou_limit = neg_iou_limit
         self.border_pixels = border_pixels
         self.coords = coords
         self.normalize_coords = normalize_coords
         self.background_id = background_id
+        self.encoded_anchors = encoded_anchors
+        self.score_type = score_type
         self.clip_gt = clip_gt
-        self.pos_threshold = pos_threshold
+        self.add_original_iou = add_original_iou
         # Compute the number of boxes per spatial location for each predictor layer.
         # For example, if a predictor layer has three different aspect ratios, [1.0, 0.5, 2.0], and is
         # supposed to predict two boxes of slightly different size for aspect ratio 1.0, then that predictor
@@ -315,7 +328,7 @@ class SSDInputEncoder_Pview:
         ##################################################################################
 
         y_encoded = self.generate_encoding_template(batch_size=batch_size, diagnostics=False)
-
+        
         ##################################################################################
         # Match ground truth boxes to anchor boxes.
         ##################################################################################
@@ -327,10 +340,17 @@ class SSDInputEncoder_Pview:
         y_encoded[:, :, self.background_id] = 1 # All boxes are background boxes by default.
         n_boxes = y_encoded.shape[1] # The total number of boxes that the model predicts per batch item
         class_vectors = np.eye(self.n_classes) # An identity matrix that we'll use as one-hot class vectors
-
+        if debugging:
+            print("y_encoded")
+            print(y_encoded.shape)
         for i in range(batch_size): # For each batch item...
 
             if ground_truth_labels[i].size == 0: continue # If there is no ground truth for this batch item, there is nothing to match.
+            ##########################################################
+            # Labels here are for one class and it could have many ###
+            # objects belonging to the studying class appear in the###
+            # current image.                                       ###
+            ##########################################################
             labels = ground_truth_labels[i].astype(np.float) # The labels for this batch item
 
             # Check for degenerate ground truth bounding boxes before attempting any computations.
@@ -352,83 +372,206 @@ class SSDInputEncoder_Pview:
 
             classes_one_hot = class_vectors[labels[:, class_id].astype(np.int)] # The one-hot class IDs for the ground truth boxes of this batch item
             labels_one_hot = np.concatenate([classes_one_hot, labels[:, [xmin,ymin,xmax,ymax]]], axis=-1) # The one-hot version of the labels for this batch item
+            if debugging:
+                print("labels_one_hot")
+                print(labels_one_hot)
 
-            # Compute the IoU similarities between all anchor boxes and all ground truth boxes for this batch item.
-            # This is a matrix of shape `(num_ground_truth_boxes, num_anchor_boxes)`.
             similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
-            gt_covered_percentage = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="to_box1")                                
-            
-            if False:
-                # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
-                #        This ensures that each ground truth box will have at least one good match.
-                # For each ground truth box, get the anchor box to match with it.
-                ############################################################################################
-                #####----> I should modify: Find anchorboxes that cover groundtruth boxes<-----#############
-                ##### The target is to constraint regressed boundingboxes excess feature zone  #############
-                ##### The anchorboxes is positive if it cover gt and its similarities >        #############
-                #####  positive_threshold                                                      #############
-                ############################################################################################            
-                bipartite_matches = match_bipartite_greedy_pview(weight_matrix_1=similarities,weight_matrix_2=gt_covered_percentage,pos_threshold=self.pos_threshold)
-                # print("___Dinh___: bipartite_matches")
-                # print(bipartite_matches)
-                # print("_____________________________")
-                ############################################################################################
-                #### Clean labels_one_hot where it does not have corresponding gt                       ####
-                ############################################################################################
-                need_clean_indices = np.where(bipartite_matches == -1)
-                labels_one_hot_cleaned = np.delete(labels_one_hot,need_clean_indices,0)
-                bipartite_matches = np.delete(bipartite_matches,need_clean_indices,0)
-                y_encoded[i, bipartite_matches, :-8] = labels_one_hot_cleaned
-            else:
+
+            if debugging:
+                print("similarities")
+                print(similarities)
+
+            # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
+            #        This ensures that each ground truth box will have at least one good match.
+
+            # For each ground truth box, get the anchor box to match with it.
+            ##############################################################################################
+            #####      I should modify: Find anchorboxes that cover groundtruth boxes      ###############
+            ##### The target is to constraint regressed boundingboxes excess feature zone  ###############
+            ##### Q?: How to deal with anchorboxes that overlap with gtbox?                ###############
+            ##### A: anchorboxes will be regressed to path of gtboxes belong to anchorboxes###############
+            #####    and score = iou or P(obj)*IoU as Yolo                                 ###############
+            ##############################################################################################
+            # If we just find the best match and assign it to foreground and these others are background,#
+            # it will create an unstandardized criterion of decision of detected objects. For example,   #
+            # one object having maximum overlap with gt with iou of 0.2 is equal to one object having    #
+            # maximum overlap with gt with iou of 0.9                                                    #
+            # --> solution: --> modify labels_one_hot according to iou                                   #
+            # step 1: proposal score = ssd or                                                            #
+            #                          traditional_iou or                                                #
+            #                          IoU2GT * traditional_iou or                                       #    
+            #                          yolo score [pending]                                              #
+            # advance: set threshold to remove best match anchor boxes but with small iou                #
+            # note: Consider a case that two or more anchores include a gt box. In this case, need to    #
+            #       a solution to select anchor: random or smallest one. Need to update function         #
+            #       match_bipartite_greedy                                                               #
+            #       step 1: Find the best iou                                                            #
+            #       step 2: If there are more than two satisfying anchores, it will go to find and select#
+            #               the smallest anchor box                                                      #
+            ##############################################################################################
+            ##############################################################################################
+            # Write the ground truth data to the matched anchor boxes.
+            # Overwrite anchorboxes that are the best match with groundtruth by labels_one_hot
+            ############################################################################################
+            #####      I should modify: overwrite anchorboxes that cover groundtruth boxes########
+            ############################################################################################
+            if self.score_type != 'ssd':
+                if self.score_type == 'iou_to_anchor':
+                    # TODO: it is going to be implemented
+                    #similarities_tradition = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
+                    anchor_score = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="to_box2")
+                    if self.add_original_iou:
+                        anchor_score = np.multiply(anchor_score, similarities)
+                elif self.score_type == 'iou_to_gt':                    
+                    anchor_score = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="to_box1")                                
+                    if self.add_original_iou:
+                        anchor_score = np.multiply(anchor_score,similarities)
+                elif self.score_type == 'iou':
+                    anchor_score = np.copy(similarities)
+                
+                if debugging:
+                    print("anchor_score")
+                    print(anchor_score)
+
+                # bipartite_matches = match_bipartite_greedy_V1(similarities,similarities_tradition)
+                bipartite_matches = match_bipartite_greedy(anchor_score)
+
+                # clean low iou anchorbox
+                if self.global_pos_iou_threshold >0.0:
+                    # Update labels_one_hot by similarity score
+                    labels_one_hot_1 = np.copy(labels_one_hot)
+                    tmp_loh = labels_one_hot_1[:,:-4]
+                    tmp_loh[tmp_loh==1.0] = anchor_score[range(anchor_score.shape[0]),bipartite_matches]
+                    
+                    filtered_bipartite_matches = []
+                    detected_gt = []
+                    for match_idx in range(tmp_loh.shape[0]):
+                        if np.any(tmp_loh[match_idx,:]>self.global_pos_iou_threshold):
+                            filtered_bipartite_matches.append(bipartite_matches[match_idx])
+                            detected_gt.append(match_idx)
+                    
+                    y_encoded[i, filtered_bipartite_matches, :-8] = labels_one_hot_1[detected_gt,:]
+                    
+                    # revise bipartite_matches
+                    bipartite_matches = filtered_bipartite_matches
+                else:                                                                        
+                    # Update labels_one_hot:
+                    labels_one_hot_1 = np.copy(labels_one_hot)
+                    tmp_loh = labels_one_hot_1[:,:-4]
+                    tmp_loh[tmp_loh==1.0] = anchor_score[range(anchor_score.shape[0]),bipartite_matches]
+                    y_encoded[i, bipartite_matches, :-8] = labels_one_hot_1
+                
+                # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
+                anchor_score[:, bipartite_matches] = 0
+                similarities[:, bipartite_matches] = 0
+                if debugging:
+                    print("anchor_score after removing bipartite matches")
+                    print(anchor_score)
+                
+                # Second: Maybe do 'multi' matching, where each remaining anchor box will be matched to its most similar
+                #         ground truth box with an IoU of at least `pos_iou_threshold`, or not matched if there is no
+                #         such ground truth box.
+                if self.matching_type == 'multi':
+                    # Get all matches that satisfy the IoU threshold.
+                    # The current function can only take the maximum overlap gt for each anchor box
+                    # matches is a list of two numpy array
+                    # matches[0] contains matched gt indexes
+                    # matches[1] contains matched anchor indexes
+                    # 
+                    if self.add_original_iou:
+                        matches = match_multi(anchor_score,self.pos_iou_threshold)
+                    else:
+                        matches = match_multi_V1(anchor_score, similarities,self.pos_iou_threshold)
+
+                    if debugging:
+                        print("multi-matches")
+                        print(matches[0].shape[0])
+                        print(matches[0])
+                        print(matches[1].shape[0])                
+                        print(matches[1])
+
+                    # Write the ground truth data to the matched anchor boxes.
+                    ########################################################################################
+                    #---> Here could be for gtboxes that overlap with anchorboxes                      <---#
+                    ########################################################################################
+                    #------------>y_encoded[i, matches[1], :-8] = labels_one_hot[matches[0]]                
+                    # Update labels_one_hot
+                    if matches[0].shape[0]>0:
+                        labels_one_hot_1 = np.copy(labels_one_hot)
+                        for match_idx, gt_idx in enumerate(matches[0]):
+                            tmp_loh = labels_one_hot_1[gt_idx,:-4]
+                            tmp_loh[tmp_loh==1.0] = anchor_score[gt_idx,matches[1][match_idx]]
+                        y_encoded[i,matches[1],:-8] = labels_one_hot_1[matches[0]]   
+                        
+                        # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
+                        anchor_score[:, matches[1]] = 0
+                
+                # Third: Now after the matching is done, all negative (background) anchor boxes that have
+                #        an IoU of `neg_iou_limit` or more with any ground truth box will be set to neutral,
+                #        i.e. they will no longer be background boxes. These anchors are "too close" to a
+                #        ground truth box to be valid background boxes.
+                max_background_anchor_score = np.amax(anchor_score, axis=0)
+                neutral_boxes = np.nonzero(max_background_anchor_score >= self.neg_iou_limit)[0]
+                y_encoded[i, neutral_boxes, self.background_id] = 0
+
+            else: # original ssd
+                # Find the best match
+                # bipartite_matches is a matrix containing index of the best match anchorboxes
                 bipartite_matches = match_bipartite_greedy(weight_matrix=similarities)
+                if debugging:
+                    print("[{}]bipartite_matches".format(i))
+                    print(bipartite_matches)
                 y_encoded[i, bipartite_matches, :-8] = labels_one_hot
 
-            # print("___Dinh___: labels_one_hot")
-            # print(labels_one_hot)
-            # print("_____________________________")
-            # print("___Dinh___: labels_one_hot_cleaned")
-            # print(labels_one_hot_cleaned)
-            # print("_____________________________")
-            # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
-            similarities[:, bipartite_matches] = 0
-            ############## Question: what should we do with pview covers a part of gt
-            ############## Answer:   anchor boxes will be scored by iou_per_gt --> loss function should be the same with regression
-
-            # Second: Maybe do 'multi' matching, where each remaining anchor box will be matched to its most similar
-            #         ground truth box with an IoU of at least `pos_iou_threshold`, or not matched if there is no
-            #         such ground truth box.
-
-            if self.matching_type == 'multi':
-
-                # Get all matches that satisfy the IoU threshold.
-                matches = match_multi(weight_matrix=similarities, threshold=self.pos_iou_threshold)
-
-                # ####### Dinh: Using labels scores
-                # # Create labels_gt_score from labels_one_hot and IoU_per_gt
-                # labels_scores = labels_one_hot[matches[0]]
-                # one_hot_indices = np.where(labels_scores[:,:self.n_classes]==1)
-                # labels_scores[one_hot_indices[0],one_hot_indices[1]] = gt_covered_percentage[matches[0],matches[1]]
-
-                # Write the ground truth data to the matched anchor boxes.
-                ########################################################################################
-                #---> Here could be for gtboxes that overlap with anchorboxes                      <---#
-                ########################################################################################
-                y_encoded[i, matches[1], :-8] = labels_one_hot[matches[0]]
-
                 # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
-                similarities[:, matches[1]] = 0
+                similarities[:, bipartite_matches] = 0
+                if debugging:
+                    print("similarities after removing bipartite matches")
+                    print(similarities)
 
-            # Third: Now after the matching is done, all negative (background) anchor boxes that have
-            #        an IoU of `neg_iou_limit` or more with any ground truth box will be set to neutral,
-            #        i.e. they will no longer be background boxes. These anchors are "too close" to a
-            #        ground truth box to be valid background boxes.
-            max_background_similarities = np.amax(similarities, axis=0)
-            neutral_boxes = np.nonzero(max_background_similarities >= self.neg_iou_limit)[0]
-            y_encoded[i, neutral_boxes, self.background_id] = 0
+                # Second: Maybe do 'multi' matching, where each remaining anchor box will be matched to its most similar
+                #         ground truth box with an IoU of at least `pos_iou_threshold`, or not matched if there is no
+                #         such ground truth box.
+                if self.matching_type == 'multi':
 
+                    # Get all matches that satisfy the IoU threshold.
+                    # The current function can only take the maximum overlap gt for each anchor box
+                    # matches is a list of two numpy array
+                    # matches[0] contains matched gt indexes
+                    # matches[1] contains matched anchor indexes
+                    # 
+                    matches = match_multi(weight_matrix=similarities, threshold=self.pos_iou_threshold)
+                    if debugging:
+                        print("multi-matches")
+                        print(matches[0].shape[0])
+                        print(matches[0])
+                        print(matches[1].shape[0])                
+                        print(matches[1])
+
+                    # Write the ground truth data to the matched anchor boxes.
+                    ########################################################################################
+                    #---> Here could be for gtboxes that overlap with anchorboxes                      <---#
+                    ########################################################################################
+                    y_encoded[i, matches[1], :-8] = labels_one_hot[matches[0]]                
+                    # Set the columns of the matched anchor boxes to zero to indicate that they were matched.
+                    similarities[:, matches[1]] = 0
+
+                # Third: Now after the matching is done, all negative (background) anchor boxes that have
+                #        an IoU of `neg_iou_limit` or more with any ground truth box will be set to neutral,
+                #        i.e. they will no longer be background boxes. These anchors are "too close" to a
+                #        ground truth box to be valid background boxes.
+                max_background_similarities = np.amax(similarities, axis=0)
+                neutral_boxes = np.nonzero(max_background_similarities >= self.neg_iou_limit)[0]
+                y_encoded[i, neutral_boxes, self.background_id] = 0
+            if debugging:
+                print("-------------end class {} --------------------------".format(i))
         ##################################################################################
-        # Clip gt boxes
+        # Convert box coordinates to anchor box offsets.
+        # ---> Need to program my converting algorithm
         ##################################################################################
+        # I need to add one more programe to correct GTs so that all GT boxes are inside 
+        # anchor boxes. Then I could use follow function.
         if self.clip_gt:
             # GT boxes and anchor boxes index in y_encoded
             # n_classes+1;[gt_coordinate(4)][anchor_coordinate(4)][variance(4)]
@@ -443,39 +586,62 @@ class SSDInputEncoder_Pview:
             if self.coords == 'minmax':
                 gt_minmax = np.copy(y_encoded[:,:,-12:-8])
                 anchor_minmax = np.copy(y_encoded[:,:,-8:-4])
-            
-            for i in range(batch_size):
-                gt_minmax[i,:,:] = clip_boxes(gt_minmax[i,:,:],anchor_minmax[i,:,:])
-            
+            # print(gt_minmax[:,:,0].shape)
+            # print(anchor_minmax.shape)
+            # print(np.concatenate((np.expand_dims(gt_minmax[:,:,0],axis=-1),
+            #                       np.expand_dims(anchor_minmax[:,:,0],axis=-1)),
+            #                       axis=-1).shape)
+            gt_minmax[:,:,0] = np.max(np.concatenate((np.expand_dims(gt_minmax[:,:,0],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,0],axis=-1)),
+                                          axis=-1),
+                                          axis=-1
+                                          )
+            gt_minmax[:,:,1] = np.min(np.concatenate((np.expand_dims(gt_minmax[:,:,1],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,1],axis=-1)),
+                                          axis=-1),
+                                          axis = -1
+                                          )
+            gt_minmax[:,:,2] = np.max(np.concatenate((np.expand_dims(gt_minmax[:,:,2],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,2],axis=-1)),
+                                          axis=-1),
+                                          axis=-1
+                                          )
+            gt_minmax[:,:,3] = np.min(np.concatenate((np.expand_dims(gt_minmax[:,:,3],axis=-1),
+                                          np.expand_dims(anchor_minmax[:,:,3],axis=-1)),
+                                          axis=-1),
+                                          axis = -1
+                                          )                                                                                   
            #
             if self.coords == 'centroids':
                 gt = convert_coordinates(gt_minmax,start_index=0,conversion='minmax2centroids',border_pixels=self.border_pixels)
             elif self.coords == 'corners':
                 gt = convert_coordinates(gt_minmax,start_index=0,conversion='minmax2corners',border_pixels=self.border_pixels)
+            y_encoded[:,:,-12:-8] = gt                    
+
+        ###########################################################################################################
+        # Need to add one more encode function. When encoding function is add, the output decoder is also needed to
+        # add a decoding function.
+        # My idea: is applying direct regression in which 4 corners are estimated from center. It will be good when 
+        #          quadrilateral boxes are fiter with object than rectangle. We can estimate this performance by getting 
+        #          percentage of object area over area defined by estimated quadrilateral boxes.
+        #          Name of my encoded_anchors is [quadrilateral].
+        ############################################################################################################
+        if self.encoded_anchors:
+            if self.coords == 'centroids':
+                y_encoded[:,:,[-12,-11]] -= y_encoded[:,:,[-8,-7]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)
+                y_encoded[:,:,[-12,-11]] /= y_encoded[:,:,[-6,-5]] * y_encoded[:,:,[-4,-3]] # (cx(gt) - cx(anchor)) / w(anchor) / cx_variance, (cy(gt) - cy(anchor)) / h(anchor) / cy_variance
+                y_encoded[:,:,[-10,-9]] /= y_encoded[:,:,[-6,-5]] # w(gt) / w(anchor), h(gt) / h(anchor)
+                y_encoded[:,:,[-10,-9]] = np.log(y_encoded[:,:,[-10,-9]]) / y_encoded[:,:,[-2,-1]] # ln(w(gt) / w(anchor)) / w_variance, ln(h(gt) / h(anchor)) / h_variance (ln == natural logarithm)
+            elif self.coords == 'corners':
+                y_encoded[:,:,-12:-8] -= y_encoded[:,:,-8:-4] # (gt - anchor) for all four coordinates
+                y_encoded[:,:,[-12,-10]] /= np.expand_dims(y_encoded[:,:,-6] - y_encoded[:,:,-8], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
+                y_encoded[:,:,[-11,-9]] /= np.expand_dims(y_encoded[:,:,-5] - y_encoded[:,:,-7], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
+                y_encoded[:,:,-12:-8] /= y_encoded[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
             elif self.coords == 'minmax':
-                gt = np.copy(gt_minmax)
-
-            y_encoded[:,:,-12:-8] = gt        
-        ##################################################################################
-        # Convert box coordinates to anchor box offsets.
-        # ---> Need to program my converting algorithm
-        ##################################################################################
-
-        if self.coords == 'centroids':
-            y_encoded[:,:,[-12,-11]] -= y_encoded[:,:,[-8,-7]] # cx(gt) - cx(anchor), cy(gt) - cy(anchor)
-            y_encoded[:,:,[-12,-11]] /= y_encoded[:,:,[-6,-5]] * y_encoded[:,:,[-4,-3]] # (cx(gt) - cx(anchor)) / w(anchor) / cx_variance, (cy(gt) - cy(anchor)) / h(anchor) / cy_variance
-            y_encoded[:,:,[-10,-9]] /= y_encoded[:,:,[-6,-5]] # w(gt) / w(anchor), h(gt) / h(anchor)
-            y_encoded[:,:,[-10,-9]] = np.log(y_encoded[:,:,[-10,-9]]) / y_encoded[:,:,[-2,-1]] # ln(w(gt) / w(anchor)) / w_variance, ln(h(gt) / h(anchor)) / h_variance (ln == natural logarithm)
-        elif self.coords == 'corners':
-            y_encoded[:,:,-12:-8] -= y_encoded[:,:,-8:-4] # (gt - anchor) for all four coordinates
-            y_encoded[:,:,[-12,-10]] /= np.expand_dims(y_encoded[:,:,-6] - y_encoded[:,:,-8], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
-            y_encoded[:,:,[-11,-9]] /= np.expand_dims(y_encoded[:,:,-5] - y_encoded[:,:,-7], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
-            y_encoded[:,:,-12:-8] /= y_encoded[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
-        elif self.coords == 'minmax':
-            y_encoded[:,:,-12:-8] -= y_encoded[:,:,-8:-4] # (gt - anchor) for all four coordinates
-            y_encoded[:,:,[-12,-11]] /= np.expand_dims(y_encoded[:,:,-7] - y_encoded[:,:,-8], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
-            y_encoded[:,:,[-10,-9]] /= np.expand_dims(y_encoded[:,:,-5] - y_encoded[:,:,-6], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
-            y_encoded[:,:,-12:-8] /= y_encoded[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
+                y_encoded[:,:,-12:-8] -= y_encoded[:,:,-8:-4] # (gt - anchor) for all four coordinates
+                y_encoded[:,:,[-12,-11]] /= np.expand_dims(y_encoded[:,:,-7] - y_encoded[:,:,-8], axis=-1) # (xmin(gt) - xmin(anchor)) / w(anchor), (xmax(gt) - xmax(anchor)) / w(anchor)
+                y_encoded[:,:,[-10,-9]] /= np.expand_dims(y_encoded[:,:,-5] - y_encoded[:,:,-6], axis=-1) # (ymin(gt) - ymin(anchor)) / h(anchor), (ymax(gt) - ymax(anchor)) / h(anchor)
+                y_encoded[:,:,-12:-8] /= y_encoded[:,:,-4:] # (gt - anchor) / size(anchor) / variance for all four coordinates, where 'size' refers to w and h respectively
 
         if diagnostics:
             # Here we'll save the matched anchor boxes (i.e. anchor boxes that were matched to a ground truth box, but keeping the anchor box coordinates).
@@ -494,7 +660,6 @@ class SSDInputEncoder_Pview:
                                         this_offsets=None,
                                         diagnostics=False):
         '''
-        Noted that: this function need to be similar with AnchorBoxes layer
         Computes an array of the spatial positions and sizes of the anchor boxes for one predictor layer
         of size `feature_map_size == [feature_map_height, feature_map_width]`.
 
@@ -525,7 +690,12 @@ class SSDInputEncoder_Pview:
         # Compute box width and height for each aspect ratio.
 
         # The shorter side of the image will be used to compute `w` and `h` using `scale` and `aspect_ratios`.
-        size = min(self.img_height, self.img_width)
+        ############################################################################################
+        ### Next version I should revise this function to be flexible with non-square input size ###
+        ############################################################################################        
+        assert self.img_width == self.img_height, "Non square input has not been implemented"
+        size = min(self.img_height, self.img_width) # This function should be revise to different size in horizontal and vertical axis
+    
         # Compute the box widths and and heights for all aspect ratios
         wh_list = []
         for ar in aspect_ratios:
@@ -569,10 +739,8 @@ class SSDInputEncoder_Pview:
                 offset_height = this_offsets
                 offset_width = this_offsets
         # Now that we have the offsets and step sizes, compute the grid of anchor box center points.
-        # cy = np.linspace(offset_height * step_height, (offset_height + feature_map_size[0] - 1) * step_height, feature_map_size[0])
-        # cx = np.linspace(offset_width * step_width, (offset_width + feature_map_size[1] - 1) * step_width, feature_map_size[1])
-        cy = offset_height + np.array(range(feature_map_size[0]))*step_height
-        cx = offset_width +  np.array(range(feature_map_size[1]))*step_width
+        cy = np.linspace(offset_height * step_height, (offset_height + feature_map_size[0] - 1) * step_height, feature_map_size[0])
+        cx = np.linspace(offset_width * step_width, (offset_width + feature_map_size[1] - 1) * step_width, feature_map_size[1])
         cx_grid, cy_grid = np.meshgrid(cx, cy)
         cx_grid = np.expand_dims(cx_grid, -1) # This is necessary for np.tile() to do what we want further down
         cy_grid = np.expand_dims(cy_grid, -1) # This is necessary for np.tile() to do what we want further down

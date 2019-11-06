@@ -6,8 +6,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 import sys
 
-from models.keras_ssd300 import ssd_300
-from keras_loss_function.keras_ssd_loss import SSDLoss
+from models.keras_ssd300_pview import ssd_300_pview
+from keras_loss_function.keras_ssd_loss_pview import SSDLoss_Pview
 from keras_layers.keras_layer_AnchorBoxes import AnchorBoxes
 from keras_layers.keras_layer_DecodeDetections import DecodeDetections
 from keras_layers.keras_layer_DecodeDetectionsFast import DecodeDetectionsFast
@@ -25,20 +25,15 @@ load_opt = 1 # 0: load weight ; 1: load model
 if load_opt == 0:
     # 1: Build the Keras model
     K.clear_session() # Clear previous models from memory.
-    model = ssd_300(image_size=(img_height, img_width, 3),
+    model = ssd_300_pview(image_size=(img_height, img_width, 3),
                     n_classes=n_classes,
                     mode=model_mode,
                     l2_regularization=0.0005,
-                    scales=[0.1, 0.2, 0.37, 0.54, 0.71, 0.88, 1.05], # The scales for MS COCO [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
-                    aspect_ratios_per_layer=[[1.0, 2.0, 0.5],
-                                             [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                                             [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                                             [1.0, 2.0, 0.5, 3.0, 1.0/3.0],
-                                             [1.0, 2.0, 0.5],
-                                             [1.0, 2.0, 0.5]],
-                    two_boxes_for_ar1=True,
-                    steps=[8, 16, 32, 64, 100, 300],
-                    offsets=[0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+                    scales=[0.147,0.28,0.567,0.78,1,1], # The scales for MS COCO [0.07, 0.15, 0.33, 0.51, 0.69, 0.87, 1.05]
+                    aspect_ratios_per_layer=[[1.0],[1.0],[1.0],[1.0],[1.0]],
+                    two_boxes_for_ar1=False,
+                    steps=None,
+                    offsets=None,
                     clip_boxes=False,
                     variances=[0.1, 0.1, 0.2, 0.2],
                     normalize_coords=True,
@@ -51,7 +46,7 @@ if load_opt == 0:
 
     # 2: Load the trained weights into the model.
     # TODO: Set the path of the trained weights.
-    weights_path = 'output/ssd300/snapshots/weights/ssd300_pascal_07+12_epoch-180_loss-4.6135_val_loss-4.3133.h5'
+    weights_path = ''
     model.load_weights(weights_path, by_name=True)
 
     # 3: Compile the model so that Keras won't complain the next time you load it.
@@ -64,10 +59,10 @@ elif load_opt ==1:
     # from keras_layers.keras_layer_DecodeDetections_V1 import DecodeDetections_V1
     from keras_layers.keras_layer_DecodeDetections import DecodeDetections
     # model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-471_loss-4.4735_val_loss-4.1848.h5'
-    model_path = 'output/ssd300_adam/snapshots/models/ssd300_pascal_07+12_epoch-506_loss-3.6811_val_loss-3.8931.h5'
+    model_path = 'output/ssd300_pview_adam/snapshots/models/ssd300_pascal_07+12_epoch-01_loss-15.7363_val_loss-13.1698.h5'
     
     # We need to create an SSDLoss object in order to pass that to the model loader.
-    ssd_loss = SSDLoss(neg_pos_ratio=3, alpha=1.0)
+    ssd_loss = SSDLoss_Pview(neg_pos_ratio=3, alpha=1.0)
     K.clear_session() # Clear previous models from memory.
     train_model = load_model(model_path, custom_objects={'AnchorBoxes': AnchorBoxes,
                                                          'L2Normalization': L2Normalization,

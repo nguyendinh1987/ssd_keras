@@ -20,7 +20,7 @@ from __future__ import division
 import numpy as np
 
 from bounding_box_utils.bounding_box_utils import iou_V1, convert_coordinates
-from ssd_encoder_decoder.matching_utils import match_bipartite_greedy, match_bipartite_greedy_pview, match_multi, clip_boxes
+from ssd_encoder_decoder.matching_utils import match_bipartite_greedy_pview, match_multi, clip_boxes
 
 class SSDInputEncoder_Pview:
     '''
@@ -358,31 +358,26 @@ class SSDInputEncoder_Pview:
             similarities = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels)
             gt_covered_percentage = iou_V1(labels[:,[xmin,ymin,xmax,ymax]], y_encoded[i,:,-12:-8], coords=self.coords, mode='outer_product', border_pixels=self.border_pixels,iou_type="to_box1")                                
             
-            if False:
-                # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
-                #        This ensures that each ground truth box will have at least one good match.
-                # For each ground truth box, get the anchor box to match with it.
-                ############################################################################################
-                #####----> I should modify: Find anchorboxes that cover groundtruth boxes<-----#############
-                ##### The target is to constraint regressed boundingboxes excess feature zone  #############
-                ##### The anchorboxes is positive if it cover gt and its similarities >        #############
-                #####  positive_threshold                                                      #############
-                ############################################################################################            
-                bipartite_matches = match_bipartite_greedy_pview(weight_matrix_1=similarities,weight_matrix_2=gt_covered_percentage,pos_threshold=self.pos_threshold)
-                # print("___Dinh___: bipartite_matches")
-                # print(bipartite_matches)
-                # print("_____________________________")
-                ############################################################################################
-                #### Clean labels_one_hot where it does not have corresponding gt                       ####
-                ############################################################################################
-                need_clean_indices = np.where(bipartite_matches == -1)
-                labels_one_hot_cleaned = np.delete(labels_one_hot,need_clean_indices,0)
-                bipartite_matches = np.delete(bipartite_matches,need_clean_indices,0)
-                y_encoded[i, bipartite_matches, :-8] = labels_one_hot_cleaned
-            else:
-                bipartite_matches = match_bipartite_greedy(weight_matrix=similarities)
-                y_encoded[i, bipartite_matches, :-8] = labels_one_hot
-
+            # First: Do bipartite matching, i.e. match each ground truth box to the one anchor box with the highest IoU.
+            #        This ensures that each ground truth box will have at least one good match.
+            # For each ground truth box, get the anchor box to match with it.
+            ############################################################################################
+            #####----> I should modify: Find anchorboxes that cover groundtruth boxes<-----#############
+            ##### The target is to constraint regressed boundingboxes excess feature zone  #############
+            ##### The anchorboxes is positive if it cover gt and its similarities >        #############
+            #####  positive_threshold                                                      #############
+            ############################################################################################            
+            bipartite_matches = match_bipartite_greedy_pview(weight_matrix_1=similarities,weight_matrix_2=gt_covered_percentage,pos_threshold=self.pos_threshold)
+            # print("___Dinh___: bipartite_matches")
+            # print(bipartite_matches)
+            # print("_____________________________")
+            ############################################################################################
+            #### Clean labels_one_hot where it does not have corresponding gt                       ####
+            ############################################################################################
+            need_clean_indices = np.where(bipartite_matches == -1)
+            labels_one_hot_cleaned = np.delete(labels_one_hot,need_clean_indices,0)
+            bipartite_matches = np.delete(bipartite_matches,need_clean_indices,0)
+            y_encoded[i, bipartite_matches, :-8] = labels_one_hot_cleaned
             # print("___Dinh___: labels_one_hot")
             # print(labels_one_hot)
             # print("_____________________________")
@@ -494,7 +489,6 @@ class SSDInputEncoder_Pview:
                                         this_offsets=None,
                                         diagnostics=False):
         '''
-        Noted that: this function need to be similar with AnchorBoxes layer
         Computes an array of the spatial positions and sizes of the anchor boxes for one predictor layer
         of size `feature_map_size == [feature_map_height, feature_map_width]`.
 
